@@ -12,7 +12,7 @@ setup(name='pll',
           'Development Status :: Alpha ::',
           'License :: OSI Approved :: MIT',
           'Programming Language :: Python 3.5',
-      ]
+      ],
       keywords='phase locked loop RF simulation',
       url="http://github.com/bobbyjsmith11/pll",
       author="Bobby Smith",
@@ -24,5 +24,7 @@ setup(name='pll',
           'matplotlib',
           'scipy',
       ],
+      test_suit='nose.collector',
+      test_requires=['nose'],
       zip_safe=False
       )

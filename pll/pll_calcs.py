@@ -11,7 +11,7 @@ import matplotlib.pylab as plt
 from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter
 
-def solveForComponents( d ):
+def solveForComponents(fc, pm, kphi, kvco, N, gamma, loop_type='passive2'):
     """
     :Parameters:
     loop_type (str) - 
@@ -28,13 +28,6 @@ def solveForComponents( d ):
     N (int) - loop multiplication ratio
     gamma (float) - optimization factor (1.024 default)
     """
-    fc =        d['fc'] 
-    pm =        d['pm'] 
-    kphi =      d['kphi'] 
-    kvco =      d['kvco'] 
-    N =         d['N'] 
-    gamma =     d['gamma'] 
-    loop_type = d['loop_type']
     
     if loop_type == 'passive2':
         pll = PllSecondOrderPassive( fc,
@@ -62,26 +55,9 @@ def solveForComponents( d ):
         d = pll.calc_components()
     return d 
 
-def test2ndOrderPassive(gamma=1.024):
-    fc = 100e3
-    pm = 45.0
-    gamma = gamma
-    kphi = 4.69e-3
-    kvco = 10e6
-    fout = 2000e6
-    fpfd = 10e6 
-    N = fout/fpfd
-    
-    pll = PllSecondOrderPassive( fc,
-                                 pm,
-                                 kphi,
-                                 kvco,
-                                 N,
-                                 gamma=gamma )
-    
-    return pll.calc_components()
-
 class PllSecondOrderPassive( object ):
+    """ The 2nd order passive phase locked loop object
+    """
     def __init__(self,
                  fc,
                  pm,
@@ -157,9 +133,7 @@ class PllSecondOrderPassive( object ):
         """
         omega_c = 2*np.pi*fc
         phi = np.pi*pm/180
-        t1 = (np.sqrt(((1+gamma)**2)*(np.tan(phi))**2 + 4*gamma) -\
-                (1+gamma)*np.tan(phi)) /\
-                (2*omega_c)
+        t1 = (np.sqrt(((1+gamma)**2)*(np.tan(phi))**2 + 4*gamma) - (1+gamma)*np.tan(phi)) / (2*omega_c)
         return t1
        
     def calc_t2(self, fc, t1, gamma=1.024):
@@ -623,7 +597,7 @@ class PllFourthOrderPassive( PllSecondOrderPassive ):
                 np.arctan( omega_c*x*t31*t43 ) - phi
         return val
 
-class PllFourthOrderPassive2( PllSecondOrderPassive ):
+class PllFourthOrderPassive2(PllSecondOrderPassive):
     def __init__(self,
                  fc,
                  pm,
@@ -764,50 +738,6 @@ class PllFourthOrderPassive2( PllSecondOrderPassive ):
 
         return d
 
-def test_manual_solution( p1, p3, p4, fc=10e3, pm=47.8, gamma=1.115 ):
-
-    d = {}
-    d['t1'] = 1.0/p1
-    d['t3'] = 1.0/p3
-    d['t31'] = d['t3']/d['t1'] 
-    d['t4'] = 1.0/p4
-    d['t43'] = d['t4']/d['t3'] 
-    d['fc'] = fc
-    d['pm'] = pm
-    d['gamm'] = gamma
-    omega_c = 2*np.pi*fc
-    phi = np.pi*float(fc)/180 
-
-    d['t2'] = gamma/( (omega_c**2)*(d['t1'] + d['t3'] + d['t4'] ) )
-    d['zero'] = 1.0/d['t2']
-
-    return d
-
-def test_calc_t1( ):
-    fc = 10e3
-    pm = 47.8
-    gamma = 1.115
-    kphi = 4e-3
-    kvco = 20e6
-    fout = 900e6
-    fpfd = 200e3
-    N = float(fout)/fpfd
-    fstart = 10
-    fstop = 100e6
-    ptsPerDec = 100
-    fref = 10e6
-    R = int(fref/fpfd)
-    # R = 1
-   
-    pll = PllFourthOrderPassive2( fc,
-                                 pm,
-                                 kphi,
-                                 kvco,
-                                 N,
-                                 gamma=gamma)
-    d = pll.calc_components() 
-
-    return d
 
 def plot_arctan( ):
     x = np.linspace(-np.pi/2,np.pi/2,1000)
@@ -871,86 +801,7 @@ def callSimulatePll( d ):
         }
     return d
 
-def test3rdOrderPassive( ):
-    fc = 100e3
-    pm = 45.0
-    kphi = 5e-3
-    kvco = 10e6
-    N = 200
-    fstart = 10
-    fstop = 100e6
-    ptsPerDec = 100
-    R = 1
-    
-    pll = PllThirdOrderPassive( fc,
-                                 pm,
-                                 kphi,
-                                 kvco,
-                                 N,
-                                 gamma=1.024,
-                                 t31=0.6)
 
-    d = pll.calc_components()
-
-    flt = {
-            'c1':d['c1'],
-            'c2':d['c2'],
-            'c3':d['c3'],
-            'c4':d['c4'],
-            'r2':d['r2'],
-            'r3':d['r3'],
-            'r4':d['r4'],
-            'flt_type':"passive" 
-           }
-
-    f,g,p,fz,pz,ref_cl,vco_cl = simulatePll( fstart, 
-                                             fstop, 
-                                             ptsPerDec,
-                                             kphi,
-                                             kvco,
-                                             N,
-                                             R,
-                                             filt=flt)
-    return flt, fz, pz
-    # return pll
-
-
-def testSimulateOpenLoop():
-    fstart = 10
-    fstop = 100e6
-    ptsPerDec = 100
-    kphi = 5e-3
-    kvco = 10e6
-    N = 200
-    R = 1 
-    
-    flt = {
-            'c1':104e-12,
-            'c2':1.7e-9,
-            'c3':23.6e-12,
-            'c4':0,
-            'r2':2.64e3,
-            'r3':10.9e3,
-            'r4':0,
-            'flt_type':"passive" 
-           }
-    f,g,p,fz,pz,ref_cl,vco_cl = simulatePll( fstart, 
-                                             fstop, 
-                                             ptsPerDec,
-                                             kphi,
-                                             kvco,
-                                             N,
-                                             R,
-                                             filt=flt)
-
-    # fig, ax = plt.subplots()
-    # ax.semilogx(f,g,'b',label='gain')
-    # ax.semilogx(f,p,'r',label='phase')
-    # legend = ax.legend()
-    # plt.grid(True)
-    # plt.show()
-    # return f, g, p, fz, pz, ref_cl, vco_cl
-    return fz, pz
 
 def getInterpolatedFzeroPzero( f, g, p ):
     """ look at the points of f, g and p surrounding where
@@ -1132,7 +983,7 @@ def callSimulatePhaseNoise():
         }
     return d
 
-def testSimulatePhaseNoise():
+def plotSimulatePhaseNoise():
     kphi = 5e-3
     kvco = 60e6
     N = 200  
@@ -1187,20 +1038,6 @@ def testSimulatePhaseNoise():
     plt.show()
     return f, refPn, vcoPn, icPn, icFlick, comp
 
-def test_smoothed_curve( ):
-    f =         [ 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6 ]
-    refPnIn =   [ -138, -158, -163, -165, -165, -165, -165, -165 ]
-    vcoPnIn =   [ -10, -30, -60, -90, -120, -140, -160, -162 ]
-    freq,refPn = semilogXInterpolate2(f,refPnIn)
-    freq,vcoPn = semilogXInterpolate2(f,vcoPnIn)
-
-    # plot results
-    fig, ax = plt.subplots()
-    ax.semilogx(freq,refPn,'r',label='pn')
-    ax.semilogx(freq,vcoPn,'r',label='pn')
-    plt.grid(True)
-    plt.show()
-    return freq, refPn, vcoPn 
 
 def semilogXInterpolate2( f, y, num_pts=1000 ):
     """ take an array of x (f) and y values. Return an array
@@ -1221,7 +1058,7 @@ def semilogXInterpolate2( f, y, num_pts=1000 ):
     yyy.extend(yy_sg)
     return xxx, yyy 
 
-def testSimulatePhaseNoise2():
+def plotSimulatePhaseNoise2():
     kphi = 5e-3
     kvco = 60e6
     N = 200  
