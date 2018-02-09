@@ -4,12 +4,13 @@
 # -------------------------------------------------------------------------
 # 
 # -------------------------------------------------------------------------
+import math
+
 import numpy as np
-import matplotlib
-matplotlib.use('agg')
-import matplotlib.pylab as plt
-from scipy.interpolate import interp1d
-from scipy.signal import savgol_filter
+
+# import matplotlib
+# matplotlib.use('agg')
+# import matplotlib.pylab as plt
 
 def solveForComponents(fc, pm, kphi, kvco, N, gamma, loop_type='passive2'):
     """
@@ -72,6 +73,7 @@ class PllSecondOrderPassive( object ):
         kphi (float) - charge pump gain in Amps per radian
         kvco (float) - vco tuning sensitivity in Hz/V
         N (int) - loop multiplication ratio
+
         gamma (float) - optimization factor (default=1.024)
         """
         self.fc = fc
@@ -130,6 +132,7 @@ class PllSecondOrderPassive( object ):
         fc (float) - cutoff frequency in Hz
         pm (float) - phase margin in degrees
         gamma (float) - optimization factor (default=1.024)
+
         """
         omega_c = 2*np.pi*fc
         phi = np.pi*pm/180
@@ -801,8 +804,6 @@ def callSimulatePll( d ):
         }
     return d
 
-
-
 def getInterpolatedFzeroPzero( f, g, p ):
     """ look at the points of f, g and p surrounding where
     g crosses zero and interpolate f and p at 0
@@ -846,7 +847,8 @@ def simulatePll( fstart,
     filter coefficients or component values. return 3 lists:
     f (frequencies), g_ol (open-loop gain), phases (open-loop phases)  
     """
-    f = freqPointsPerDecade( fstart, fstop, ptsPerDec )
+    f = get_freq_points_per_decade(fstart, fstop, ptsPerDec)
+
     if coeffs == None:
         c1 = filt['c1']
         c2 = filt['c2']
@@ -925,64 +927,6 @@ def simulatePll( fstart,
     vco_cl.extend(cl_vco_db)
     return f, g, p, fz, pz, ref_cl, vco_cl
 
-def callSimulatePhaseNoise():
-    """
-    """
-
-    f =             request.vars.freqs
-    f =             map(float, f.split(','))
-
-    vcoPn =         request.vars.vcoPn
-    vcoPn =         map(float, vcoPn.split(','))
-
-    refPn =         request.vars.refPn
-    refPn =         map(float, refPn.split(','))
-
-    pllFom =        float(request.vars.pllFom)
-    # pllFlicker =    float(request.vars.pllFlicker)
-    kphi =          float(request.vars.kphi)
-    kvco =          float(request.vars.kvco)
-    fpfd =          float(request.vars.fpfd)
-    N =             float(request.vars.N)
-    R =             float(request.vars.R)
-    flt_type =      request.vars.flt_type
-    c1 =            float(request.vars.c1)
-    c2 =            float(request.vars.c2)
-    c3 =            float(request.vars.c3)
-    c4 =            float(request.vars.c4)
-    r2 =            float(request.vars.r2)
-    r3 =            float(request.vars.r3)
-    r4 =            float(request.vars.r4)
-    flt =   {
-            'c1':c1,
-            'c2':c2,
-            'c3':c3,
-            'c4':c4,
-            'r2':r2,
-            'r3':r3,
-            'r4':r4,
-            'flt_type':flt_type
-            }
-
-    f, ref, vco, ic, comp = simulatePhaseNoise2( f,
-                                                       refPn,
-                                                       vcoPn,
-                                                       pllFom,
-                                                       kphi,
-                                                       kvco,
-                                                       fpfd,
-                                                       N,
-                                                       R,
-                                                       filt=flt )
-     
-    d = { 'freqs':f,
-          'refPnOut':ref,
-          'vcoPnOut':vco,
-          'icPnOut': ic,
-          'compositePn': comp
-        }
-    return d
-
 def plotSimulatePhaseNoise():
     kphi = 5e-3
     kvco = 60e6
@@ -1038,80 +982,130 @@ def plotSimulatePhaseNoise():
     plt.show()
     return f, refPn, vcoPn, icPn, icFlick, comp
 
-
-def semilogXInterpolate2( f, y, num_pts=1000 ):
-    """ take an array of x (f) and y values. Return an array
-    of x and y values with num_pts points. Linear interpolate
-    between the input x and y values with x in the log scale.
+def interp_semilogx(x, y, num_points):
+    """ return a paired list of values each with length num_points where
+    the values are linearly interpolated with the x axis in the log scale.
+    Essentially, given arrays x and y, increase the resolution of to num_points
+    Parameters:
+        x (list) - x values (frequencies)
+        y (list) - y values (phase noise or gain in dB)
+    Note: x and y have a semilog X relationship.
+    Returns:
+        tuple of lists (freqs, values)
     """
-    x = np.log10(np.array(f))
-    xx = np.linspace(min(x), max(x), num_pts)
+    # first, log-ify the x axis
+    log_x = []
+    for item in x:
+        log_x.append(math.log10(item))    # x_new, y_new = interp_linear(log_x, y, x_interp) 
+    xmin = min(log_x)
+    xmax = max(log_x)
+    f_log = linspace(xmin, xmax, num_points)
+    y_interp = []
 
-    itp = interp1d(x,y, kind='linear')
-    window_size, poly_order = 251, 3
-    yy_sg = savgol_filter(itp(xx), window_size, poly_order)
-    x_log = 10**(xx)
+    x_log = []
+    for x_val in x:
+        x_log.append(math.log10(x_val))
+    
+    f = []
+    for xx in f_log:
+        f.append(10**(xx))
+        y_temp = interp_linear(x_log, y, xx)
+        y_interp.append(y_temp[1])
 
-    xxx = []
-    xxx.extend(x_log)
-    yyy = []
-    yyy.extend(yy_sg)
-    return xxx, yyy 
+    # f = [xx**(f_log) for xx in f_log]
+    return f, y_interp
+    # # return x_new, y_new
+    # return log_x, y
+    # # x_new, y_new = interp_linear(log_x, y, x_interp) 
+    # # return x_new, y_new
+    # x_new, y_new = interp_linear(x, y, x_interp) 
+    # return x_new, y_new
 
-def plotSimulatePhaseNoise2():
-    kphi = 5e-3
-    kvco = 60e6
-    N = 200  
-    R = 1  
-    fpfd = 10e6/R
-
-    flt = {
-            'c1':368e-12,
-            'c2':6.75e-9,
-            'c3':76.6e-12,
-            'c4':44.7e-12,
-            'r2':526,
-            'r3':1.35e3,
-            'r4':3.4e3,
-            'flt_type':"passive" 
-           }
-
-    f =         [ 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6 ]
-    refPnIn =   [ -138, -158, -163, -165, -165, -165, -165, -165 ]
-    vcoPnIn =   [ -10, -30, -60, -90, -120, -140, -160, -162 ]
-
-    pllFom =        -227
-    pllFlicker =    -268
-
-    f, refPn, vcoPn, icPn, icFlick, comp = simulatePhaseNoise2( f,
-                                                               refPnIn,
-                                                               vcoPnIn,
-                                                               pllFom,
-                                                               pllFlicker,
-                                                               kphi,
-                                                               kvco,
-                                                               fpfd,
-                                                               N,
-                                                               R,
-                                                               filt=flt )
-
-    # print(type(f))
-    # print(type(refPn))
-    # print(type(vcoPn))
-    # print(type(icPn))
-    # print(type(icFlick))
-    # print(type(comp))
-
-    fig, ax = plt.subplots()
-    ax.semilogx(f,refPn,'r',label='ref')
-    ax.semilogx(f,vcoPn,'b',label='vco')
-    ax.semilogx(f,icPn,'g',label='pll')
-    ax.semilogx(f,icFlick,'c',label='flick')
-    ax.semilogx(f,comp,'k',linewidth=2,label='total')
-    legend = ax.legend()
+def plot_interp_semilogx(x, y, num_points=10):
+    """
+    """
+    x2, y2 = interp_semilogx(x, y, num_points=num_points)
+    plt.semilogx(x, y, '-bo', x2, y2, 'ro')
     plt.grid(True)
-    plt.show()
-    return f, refPn, vcoPn, icPn, icFlick, comp
+    plt.show() 
+
+def linspace(a, b, num_points):
+    """ return a list of linearly spaced values
+    between a and b having num_points points
+    """
+    inc = (float(b) - float(a))/(num_points-1)
+    ret_ar = []
+    for i in range(num_points):
+        ret_ar.append(a + i*inc)
+    return ret_ar
+
+def plot_interp_linear(x, y, x_interp):
+    """
+    """
+    x2, y2 = interp_linear(x, y, x_interp)
+    plt.plot(x, y, '-bo', [x2], [y2], 'ro')
+    plt.grid(True)
+    plt.show() 
+
+def interp_linear(x, y, x_interp):
+    """ linearly interpolate between two points with the
+        Parameters
+            x (list) - x values
+            y (list) - y values
+        Returns
+            tuple (x, y) where x is x_interp and y is the
+                interpolated y value
+    """
+    if len(x) != len(y):
+        raise ValueError('x and y arrays need to be the same length')
+    x_interp = float(x_interp)
+    if x_interp < x[0]:         # x_interp is below the lowest point in x array
+        # find the first slope and interpolate below
+        m = (y[1]-y[0])/(x[1]-x[0])
+        y_interp = (x_interp - x[0])*m + y[0]
+        return x_interp, y_interp
+    elif x_interp > x[-1]:      # x_interp is above the highest point in x array
+        # find the last slope and interpolate above
+        m = (y[-1]-y[-2])/(x[-1]-x[-2])
+        y_interp = (x_interp - x[-1])*m + y[-1]
+        return x_interp, y_interp
+    else:                       # x_interp is between 2 points in array
+        for n in range(1,len(x)):
+            if x[n] > x_interp:
+                j = n 
+                i = n-1 
+                break
+            elif x[n] == x_interp:
+                return x[n], y[n]
+        m = (y[j]-y[i])/(x[j]-x[i])
+        y_interp = (x_interp - x[i])*m + y[i]
+        return x_interp, y_interp
+
+def get_freq_points_per_decade(fstart, fstop, ptsPerDec):
+    """ return an array of frequencies starting at the 
+        nearest decade of 10 from fstart and ending at the 
+        nearest decade of 10 at fstop. Each decade has
+        ptsPerDec tpoints.
+    :Arguments:
+    fstart (float)
+    fstop (float)
+    ptsPerDec (int)
+    """
+    fstart = float(fstart)
+    fstop = float(fstop)
+    ptsPerDec = int(ptsPerDec)
+    num_decades = round(math.log10(fstop/fstart)/math.log10(10),0)
+    ar = []
+    istart = int(math.log10(fstart)/math.log10(10))
+    ar.append(10**istart)
+    for i in range(istart,int(num_decades)+1):
+        newDec = 10**i
+        nextDec = 10**(i+1)
+        inc = float((nextDec - newDec))/float(ptsPerDec-1)
+        for j in range(1,ptsPerDec):
+            val = newDec + j*inc
+            ar.append(float(val))
+    return ar    
 
 def simulatePhaseNoise2( f, 
                         refPn,
@@ -1169,8 +1163,7 @@ def simulatePhaseNoise2( f,
 
     # get smoothed curves for each phase noise component
 
-    freq, refPn = semilogXInterpolate2( f, refPn, num_pts=numPts )
-    freq, vcoPn = semilogXInterpolate2( f, vcoPn, num_pts=numPts )
+    freq, vcoPn = interp_semilogx( f, vcoPn, num_points=numPts )
 
     # loop filter impedance
     z = calculateZ( freq,  
@@ -1206,8 +1199,8 @@ def simulatePhaseNoise2( f,
     compPn = []
     for i in range(len(freq)):
 
-        compPn.append(powerSum( [ refPnOut[i],
-                                  vcoPnOut[i],
+        compPn.append(power_sum( [ refPnOut[i],
+                                  vcoPnOut[i],,
                                   icPnOut[i] ] ))
 
     return freq, refPn, vcoPn, icPn, compPn
@@ -1304,7 +1297,7 @@ def simulatePhaseNoise( f,
 
     compPn = []
     for i in range(len(f)):
-        compPn.append(powerSum( [ refPnOut[i],
+        compPn.append(power_sum( [ refPnOut[i],
                                   vcoPnOut[i],
                                   icPnOut[i],
                                   icFlickerOut[i] ] ))
@@ -1319,7 +1312,8 @@ def calculateCoefficients( c1=0,
                            r3=0,
                            r4=0,
                            flt_type='passive'):
-    """ return loop filter coeffiencients
+    """ return loop filter coeffiencients as list
+    a[0] = a0, a[1] = a1, etc.
     """
     a = []
     if flt_type == 'passive':
@@ -1335,75 +1329,22 @@ def calculateCoefficients( c1=0,
     a.append(c1*c2*c3*c4*r2*r3*r4)
     return a
 
-def calculateZ( f,
-                t2,
-                a0,
-                a1,
-                a2=0,
-                a3=0):
-    """ given the filter coefficients, return Z(s)
+def calculateZ(f, t2, a0, a1, a2=0, a3=0):
+    """ given the frequency array and the filter coefficients, 
+        return Z(s) as a np.array()
     """
-    s = np.array(f)*2*np.pi*1j
+    s = np.array(f)*2*math.pi*1j        ####################
     z = (1 + s*t2)/(s*(a3*s**3 + a2*s**2 + a1*s + a0))
     return z
-
 
 def calculateG(f, z, kphi, kvco):
     """ given the loop filter impedance, kphi and kvco, return G(s)
     """
-    s = np.array(f)*2*np.pi*1j
+    s = np.array(f)*2*math.pi*1j        ###########
     g = kphi*kvco*z/s
     return g
 
-def freqPointsPerDecade( fstart, fstop, ptsPerDec ):
-    """ return an array of frequencies starting at the 
-        nearest decade of 10 from fstart and ending at the 
-        nearest decade of 10 at fstop. Each decade has
-        ptsPerDec tpoints.
-    :Arguments:
-    fstart (float)
-    fstop (float)
-    ptsPerDec (int)
-    """
-    fstart = float(fstart)
-    fstop = float(fstop)
-    ptsPerDec = int(ptsPerDec)
-    num_decades = round(np.log10(fstop/fstart)/np.log10(10),0)
-    ar = []
-    istart = int(np.log10(fstart)/np.log10(10))
-    ar.append(10**istart)
-    for i in range(istart,int(num_decades)+1):
-        newDec = 10**i
-        nextDec = 10**(i+1)
-        inc = float((nextDec - newDec))/float(ptsPerDec)
-        for j in range(1,ptsPerDec+1):
-            val = newDec + j*inc
-            ar.append(val)
-    return ar    
-
-def semilogXInterpolate( f, x, y ):
-    """ perform linear interpolation but with the x function
-    in the log domain
-    :Parameters:
-    f (new list of x axis)
-    x (base x axis)
-    y (base y axis)
-    :Returns:
-    new list of y axis
-    """
-    logx = []
-    for i in range(len(x)):
-        logx.append(np.log10(x[i]))
-    logf = []
-    for i in range(len(f)):
-        logf.append(np.log10(f[i]))
-
-    pn = np.interp(logf, logx, y)
-    lst = []
-    lst.extend(pn)
-    return lst 
-
-def powerSum( pdb_lst ):
+def power_sum( pdb_lst ):
     """ take a list of powers in dBm, add them
         in the linear domain and return the sum
         in log
@@ -1411,8 +1352,7 @@ def powerSum( pdb_lst ):
     sum_lin = 0
     for pdb in pdb_lst:
         sum_lin += 10**(float(pdb)/10)*1e-3
-    return 10*np.log10(sum_lin/1e-3)
-
+    return 10*math.log10(sum_lin/1e-3)
 
 def callGetInterpolatedPhaseNoise(d):
     """
@@ -1425,8 +1365,8 @@ def callGetInterpolatedPhaseNoise(d):
 
     # freq_pts = map(float, freq_pts.split(','))
     # pn_pts = map(float, pn_pts.split(','))
-    # f = freqPointsPerDecade( fstart, fstop, ptsPerDec )
-    f, pns = semilogXInterpolate2(freq_pts, pn_pts, num_pts=numPts )
+    # f = get_freq_points_per_decade(fstart, fstop, ptsPerDec)
+    f, pns = interp_semilogx(freq_pts, pn_pts, num_points=numPts )
     d = { 'freqs':f,
           'pns':pns,
         }

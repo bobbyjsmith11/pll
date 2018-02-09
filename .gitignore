@@ -1,6 +1,10 @@
 # compiled python modules
 *.pyc
 
+# vim remnants
+*.swp
+*.swo
+
 # Setuptools distribution folder
 /dist/
 

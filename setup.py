@@ -21,8 +21,6 @@ setup(name='pll',
       packages=["pll"],
       install_requires=[
           'numpy',
-          'matplotlib',
-          'scipy',
       ],
       test_suit='nose.collector',
       test_requires=['nose'],
