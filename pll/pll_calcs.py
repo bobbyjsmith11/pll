@@ -1199,9 +1199,9 @@ def simulatePhaseNoise2( f,
     compPn = []
     for i in range(len(freq)):
 
-        compPn.append(power_sum( [ refPnOut[i],
-                                  vcoPnOut[i],,
-                                  icPnOut[i] ] ))
+        compPn.append(power_sum([refPnOut[i],
+                                 vcoPnOut[i],
+                                 icPnOut[i] ]))
 
     return freq, refPn, vcoPn, icPn, compPn
 

@@ -9,7 +9,7 @@
 /dist/
 
 # Python egg metadata, regenerated from source files by Setuptools
-/*.egg-info
+*.egg-info
 
 # virtual environment stuff
 requirements.txt

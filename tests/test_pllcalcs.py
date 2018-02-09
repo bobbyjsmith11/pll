@@ -87,6 +87,7 @@ class Test2ndOrderPassive(TestCase):
         fstart = 1
         fstop = 100e6
         ptsPerDec = 100
+
         N = 200
         R = 4
 
