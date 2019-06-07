@@ -8,10 +8,6 @@ import math
 
 import numpy as np
 
-# import matplotlib
-# matplotlib.use('agg')
-# import matplotlib.pylab as plt
-
 def solveForComponents(fc, pm, kphi, kvco, N, gamma, loop_type='passive2'):
     """
     :Parameters:
@@ -31,732 +27,217 @@ def solveForComponents(fc, pm, kphi, kvco, N, gamma, loop_type='passive2'):
     """
     
     if loop_type == 'passive2':
-        pll = PllSecondOrderPassive( fc,
-                                     pm,
-                                     kphi,
-                                     kvco,
-                                     N,
-                                     gamma=gamma )
-        d = pll.calc_components()
+        pll = PhaseLockedLoop(fc, pm, kphi, kvco, N, gamma=gamma, active=False)
+        coeffs = calc_coeffs_from_loop_vals(pll.get_loop_values())
+        d =  calc_components_from_coeffs(coeffs, order=2, active=False)
     elif loop_type == 'passive3':
-        pll = PllThirdOrderPassive( fc,
-                                    pm,
-                                    kphi,
-                                    kvco,
-                                    N,
-                                    gamma=gamma )
-        d = pll.calc_components()
+        pll = PhaseLockedLoop(fc, pm, kphi, kvco, N, order=3, t31=0.6, gamma=gamma, active=False)
+        coeffs = calc_coeffs_from_loop_vals(pll.get_loop_values())
+        d =  calc_components_from_coeffs(coeffs, order=3, active=False)
     elif loop_type == 'passive4':
-        pll = PllFourthOrderPassive( fc,
-                                     pm,
-                                     kphi,
-                                     kvco,
-                                     N,
-                                     gamma=gamma )
-        d = pll.calc_components()
+        pll = PhaseLockedLoop(fc, pm, kphi, kvco, N, order=4, t31=0.4, t43=0.4, gamma=gamma, active=False)
+        coeffs = calc_coeffs_from_loop_vals(pll.get_loop_values())
+        d =  calc_components_from_coeffs(coeffs, order=4, active=False)
     return d 
 
-class PllSecondOrderPassive( object ):
-    """ The 2nd order passive phase locked loop object
+class PhaseLockedLoop(object):
     """
-    def __init__(self,
-                 fc,
-                 pm,
-                 kphi,
-                 kvco,
-                 N,
-                 gamma=1.024):
+    """
+    def __init__(self, fc, pm, kphi, kvco, N, ref_freq_Hz=10e6, R=1, order=2, t31=0, t43=0, gamma=1.024, active=False):
         """
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        kphi (float) - charge pump gain in Amps per radian
-        kvco (float) - vco tuning sensitivity in Hz/V
-        N (int) - loop multiplication ratio
-
-        gamma (float) - optimization factor (default=1.024)
-        """
-        self.fc = fc
-        self.pm = pm
-        self.kphi = kphi
-        self.kvco = kvco
-        self.N = N
-        self.gamma = gamma
-
-    def calc_components(self):
-        """ return a dict with the component values """
-        d = {}
-
-        d['t1'] = self.calc_t1(self.fc, 
-                               self.pm, 
-                               self.gamma)
-
-        d['t2'] = self.calc_t2(self.fc, 
-                               d['t1'], 
-                               self.gamma)
-
-        d['a0'] = self.calc_a0(self.kphi, 
-                               self.kvco, 
-                               self.N, 
-                               self.fc, 
-                               d['t1'],
-                               d['t2'])
-
-        d['c1'] = self.calc_c1(d['a0'],
-                               d['t1'],
-                               d['t2'])
-
-        d['c2'] = self.calc_c2(d['a0'], 
-                               d['c1'])
-
-        d['r2'] = self.calc_r2(d['c2'], 
-                               d['t2'])
-
-        d['a1'] = self.calc_a1(d['c1'], 
-                               d['c2'],
-                               d['r2'])
-        d['a2'] = 0 
-        d['a3'] = 0 
-        d['r3'] = 0
-        d['r4'] = 0
-        d['c3'] = 0
-        d['c4'] = 0
-        d['t3'] = 0
-        d['t4'] = 0
-
-        return d
-
-    def calc_t1(self, fc, pm, gamma=1.024):
-        """
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        gamma (float) - optimization factor (default=1.024)
-
-        """
-        omega_c = 2*np.pi*fc
-        phi = np.pi*pm/180
-        t1 = (np.sqrt(((1+gamma)**2)*(np.tan(phi))**2 + 4*gamma) - (1+gamma)*np.tan(phi)) / (2*omega_c)
-        return t1
-       
-    def calc_t2(self, fc, t1, gamma=1.024):
-        """
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        t1 (float) - time constant t1 in seconds
-        gamma (float) - optimization factor (default=1.024)
-        """
-        omega_c = 2*np.pi*fc
-        return gamma/((omega_c**2)*t1)
-    
-    def calc_a0(self, kphi, kvco, N, fc, t1, t2):
-        """
-        :Parameters:
-        kphi (float) - charge pump gain in Amps per radian
-        kvco (float) - vco tuning sensitivity in Hz/V
-        N (int) - loop multiplication ratio
-        fc (float) - 0dB crossover frequency in Hz
-        t1 (float) - time constant t1 in seconds
-        t2 (float) - time constant t2 in seconds
-        """
-        omega_c = 2*np.pi*fc
-        x = (kphi*kvco)/(N*omega_c**2)
-        y_num = np.sqrt(1+(omega_c**2)*(t2**2))
-        y_den = np.sqrt(1+(omega_c**2)*(t1**2))
-        a0 = x*y_num/y_den
-        return a0
-    
-    def calc_c1(self, a0, t1, t2):
-        """
-        :Parameters:
-        a0 (float) - loop filter coefficient
-        t1 (float) - time constant t1 in seconds
-        (t2 (float) - time constant t2 in seconds
-        """
-        return a0*t1/t2
-    
-    def calc_c2(self, a0, c1):
-        """
-        :Parameters:
-        a0 (float) - loop filter coefficient
-        c1 (float) - capacitor in Farads
-        """
-        return a0-c1
-    
-    def calc_r2(self, c2, t2):
-        """
-        :Parameters:
-        c2 (float) - capacitor in Farads
-        t2 (float) - time constant t2 in seconds
-        """
-        return t2/c2
-
-    def calc_a1(self, c1, c2, r2):
-        """
-        :Parameters:
-        c1 (float) - capacitor in Farads
-        c2 (float) - capacitor in Farads
-        r2 (float) - resistor in Ohms
-        """
-        return c1*c2*r2
-
-class PllThirdOrderPassive( PllSecondOrderPassive ):
-    def __init__(self,
-                 fc,
-                 pm,
-                 kphi,
-                 kvco,
-                 N,
-                 gamma=1.136,
-                 t31=0.6):
-        """
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        kphi (float) - charge pump gain in Amps per radian
-        kvco (float) - vco tuning sensitivity in Hz/V
-        N (int) - loop multiplication ratio
-        gamma (float) - optimization factor (default=1.136)
-        t31 (float) - ratio of T3 to T1 (default=0.6)
+        :args:
+            :fc (float):            loop bandwidth in Hz
+            :pm (float):            phase margin in degrees 
+            :kphi (float):          charge pump gain in amps per radian
+            :kvco (float):          vco tuning sensitiviy in Hz/V
+            :N (float):             loop multiplication ratio
+            :R (float):             reference divider
+            :order (int):           order of loop filter < 2 | 3 | 4>
+            :t31 (float):           ratio of t3 to t1 (if 3rd order or greater)
+            :t43 (float):           ratio of t4 to t4 (if 4th order)
+            :gamma (float):         optimization factor
+            :active (bool):         active filter if True
         """
         self.fc = fc
         self.pm = pm
         self.kphi = kphi
         self.kvco = kvco
         self.N = N
+        self.R = R
         self.gamma = gamma
-        self.t31 = t31
-
-    def calc_components(self):
-        """ return a dict with the component values """
-        d = {}
-        omega_c = 2*np.pi*self.fc
-
-        # solve for time constants
-        d['t1'] = self.calc_t1(self.fc, 
-                               self.pm, 
-                               self.gamma)
-
-        d['t3'] = d['t1']*self.t31 
-  
-        d['t2'] = self.gamma/( (omega_c**2)*(d['t1'] + d['t3'] ) )
-        
-
-        # solve for coefficients
-        d['a0'] = self.calc_a0(self.kphi, 
-                               self.kvco, 
-                               self.N, 
-                               self.fc, 
-                               d['t1'],
-                               d['t2'],
-                               d['t3'])
-
-        d['a1'] = d['a0']*(d['t1'] + d['t3'])
-
-        d['a2'] = d['a0']*d['t1']*d['t3']
-
-
-        # solve for components
-        d['c1'] = self.calc_c1(d['a0'],
-                               d['a1'],
-                               d['a2'],
-                               d['t2'])
-
-        d['c3'] = self.calc_c3( d['a0'],
-                                d['a1'],
-                                d['a2'],
-                                d['t2'],
-                                d['c1'] )
-
-        d['c2'] = d['a0'] - d['c1'] - d['c3']
-
-
-        d['r2'] = d['t2']/d['c2']
-
-        d['r3'] = d['a2']/(d['c1']*d['c3']*d['t2'])
-
-        d['t4'] = 0
-        d['a3'] = 0
-        d['r4'] = 0
-        d['c4'] = 0
-
-        return d
-
-  
-    def calc_c3( self,
-                 a0,
-                 a1,
-                 a2,
-                 t2,
-                 c1 ):
-        return ( -(t2**2)*(c1**2) + t2*a1*c1 - a2*a0 )/( (t2**2)*c1 - a2 )
-
-    def calc_c1( self,
-                 a0,
-                 a1, 
-                 a2, 
-                 t2 ):
-        return (a2/(t2**2))*(1 + np.sqrt(1 + (t2/a2)*(t2*a0 - a1) ) )
-    
-    def calc_a0( self, 
-                 kphi, 
-                 kvco, 
-                 N, 
-                 fc, 
-                 t1, 
-                 t2, 
-                 t3 ):
-        omega_c = 2*np.pi*fc
-        k1 = kphi*kvco/((omega_c**2)*(N))
-        k2 = np.sqrt( (1+(omega_c*t2)**2)/((1+(omega_c*t1)**2)*(1+(omega_c*t3)**2) ) )
-        return k1*k2
-
-    def calc_t1(self, 
-                fc, 
-                pm, 
-                gamma,
-                t31=0.6,
-                num_iters=100):
-        """ numerically solve for t1 using the bisection method
-            see: https://en.wikibooks.org/wiki/Numerical_Methods/Equation_Solving
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        gamma (float) - optimization factor (1.136)
-        num_iters (int) - number of times to loop
-        """
-        a = 1e-15   # initial guess for a
-        b = 1.0       # initial guess for b
-        fa = self.func_t1(a,fc,pm,t31=t31,gamma=gamma)
-        fb = self.func_t1(b,fc,pm,t31=t31,gamma=gamma)
-        for i in range(num_iters):
-            guess = (a+b)/2
-            if (self.func_t1(guess,fc,pm,t31=t31,gamma=gamma) < 0):
-                b = guess
-            else:
-                a = guess
-        return guess
-
-    def func_t1(self,
-                x, 
-                fc, 
-                pm,
-                t31=0.6, 
-                gamma=1.136):
-        """ simulate t1. This function is used to 
-        numerically solve for T1. 
-        Equation 22.31 in Dean Banerjee's Book
-        :Parameters:
-        x (float) - guess at t1
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        t31 (float) - ratio of t3 to t1
-        gamma (float) - optimization factor (1.136)
-        :Returns:
-        updated value for t1 based on guess (float)
-        """
-        omega_c = 2*np.pi*fc
-        phi = pm*np.pi/180
-        val = np.arctan( gamma/(omega_c*x*(1+t31)) ) - \
-                np.arctan( omega_c*x ) - \
-                np.arctan( omega_c*x*t31 ) - phi
-        return val
-
-
-def test4thOrderPassive( t31=0.4, t43=0.4 ):
-    fc = 10e3
-    pm = 47.8
-    kphi = 4e-3
-    kvco = 20e6
-    fout = 900e6
-    fpfd = 200e3
-    N = float(fout)/fpfd
-    fstart = 10
-    fstop = 100e6
-    ptsPerDec = 100
-    fref = 10e6
-    R = int(fref/fpfd)
-    # R = 1
-    
-    pll = PllFourthOrderPassive( fc,
-                                 pm,
-                                 kphi,
-                                 kvco,
-                                 N,
-                                 gamma=1.115,
-                                 t31=t31,
-                                 t43=t43)
-    
-
-    d = pll.calc_components()
-    # return d
-
-    flt = {
-            'c1':d['c1'],
-            'c2':d['c2'],
-            'c3':d['c3'],
-            'c4':d['c4'],
-            'r2':d['r2'],
-            'r3':d['r3'],
-            'r4':d['r4'],
-            'flt_type':"passive" 
-           }
-
-    f,g,p,fz,pz,ref_cl,vco_cl = simulatePll( fstart, 
-                                             fstop, 
-                                             ptsPerDec,
-                                             kphi,
-                                             kvco,
-                                             N,
-                                             R,
-                                             filt=flt)
-    return d, fz, pz
-
-class PllFourthOrderPassive( PllSecondOrderPassive ):
-    def __init__(self,
-                 fc,
-                 pm,
-                 kphi,
-                 kvco,
-                 N,
-                 gamma=1.115,
-                 t31=0.107,
-                 t43=0.107):
-        """
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        kphi (float) - charge pump gain in Amps per radian
-        kvco (float) - vco tuning sensitivity in Hz/V
-        N (int) - loop multiplication ratio
-        gamma (float) - optimization factor (default=1.115)
-        t31 (float) - ratio of T3 to T1 (default=0.4)
-        t43 (float) - ratio of T4 to T3 (default=0.4)
-            note: for a realizable solution, t31 + t43 <= 1
-        """
-        self.fc = fc
-        self.pm = pm
-        self.kphi = kphi
-        self.kvco = kvco
-        self.N = N
-        self.gamma = gamma
+        self.order = order
+        self.active = active
         self.t31 = t31
         self.t43 = t43
-
-    def calc_components(self):
-        """ return a dict with the component values """
+        self.ref_freq_Hz = ref_freq_Hz
+        
+    def get_loop_values(self):
+        """
+        """
         d = {}
-        omega_c = 2*np.pi*self.fc
-
-        # solve for time constants
-        d['t1'] = self.calc_t1(self.fc, 
-                               self.pm, 
-                               self.gamma,
-                               t31=self.t31,
-                               t43=self.t43)
-        # d['t1'] = 4.0685e-6
-        # print( 't1 = ' + str(d['t1']) )
-
-        d['t3'] = d['t1']*self.t31 
-        d['t4'] = d['t1']*self.t31*self.t43
-  
-        d['t2'] = self.gamma/( (omega_c**2)*(d['t1'] + d['t3'] + d['t4'] ) )
-
-        # solve for coefficients
-        d['a0'] = self.calc_a0(self.kphi, 
-                               self.kvco, 
-                               self.N, 
-                               self.fc, 
-                               d['t1'],
-                               d['t2'],
-                               d['t3'],
-                               d['t4'])
-    
-        d['a1'] = d['a0']*(d['t1'] + d['t3'] + d['t4'])
-        d['a2'] = d['a0']*(d['t1']*d['t3'] + d['t1']*d['t4'] + d['t3']*d['t4'])
-        d['a3'] = d['a0']*d['t1']*d['t3']*d['t4']
-
-        c1_t3, r3_t3 = self.calc_c1_r3(d['a0'],d['t1'],d['t2'],d['t3'])
-        c1_t4, r3_t4 = self.calc_c1_r3(d['a0'],d['t1'],d['t2'],d['t4'])
-
-        d['c1'] = (c1_t3 + c1_t4)/2
-        d['r3'] = (r3_t3 + r3_t4)/2
-
-        d['c2'], d['c3'] = self.calc_c2_c3( d['a0'],
-                                   d['a1'],
-                                   d['a2'],
-                                   d['a3'],
-                                   d['t2'],
-                                   d['r3'],
-                                   d['c1'] )
-      
-        d['c4'] = d['a0']- d['c1']- d['c2'] - d['c3']
-
-        d['r2'] = d['t2']/d['c2']
-
-        d['r4'] = d['a3']/(d['t2']*d['r3']*d['c1']*d['c3']*d['c4'])
-
-
+        d['fc'] =       self.fc
+        d['pm'] =       self.pm
+        d['kphi'] =     self.kphi
+        d['kvco'] =     self.kvco
+        d['N'] =        self.N
+        d['R'] =        self.R
+        d['gamma'] =    self.gamma
+        d['t31'] =      self.t31
+        d['t43'] =      self.t43
+        d['order'] =    self.order
+        d['active'] =   self.active
         return d
 
-    def calc_c2_c3( self,
-                    a0,
-                    a1,
-                    a2,
-                    a3,
-                    t2,
-                    r3,
-                    c1 ):
-        k0 = (a2/a3) - 1.0/t2 - 1.0/(c1*r3) - (a0 - c1)*t2*r3*c1/a3
-        k1 = a1 - t2*a0 - a3/(t2*r3*c1) - (a0 - c1)*r3*c1
-        a = a3/((t2*c1)**2)
-        b = t2 + r3*(c1 - a0) + (a3/(t2*c1))*((1.0/t2) - k0)
-        c = k1 - (k0*a3)/t2
-        c2 = (-b + np.sqrt(b**2 - 4*a*c))/(2*a)
-        c3 = (t2*a3*c1)/(r3*(k0*t2*a3*c1 - c2*(a3 - r3*((t2*c1)**2))))
-        return c2, c3
-
-    def calc_c1_r3( self,
-                    a0,
-                    t1,
-                    t2,
-                    tpole):
-        a1_t = a0*(t1+tpole)
-        a2_t = a0*t1*tpole
-
-        c1_t = (a2_t/(t2**2))*(1 + np.sqrt(1 + (t2/a2_t)*(t2*a0 - a1_t)) )
-        c3_t = (-1*(t2**2)*(c1_t**2) + t2*a1_t*c1_t - a2_t*a0)/((t2**2)*c1_t - a2_t)
-        r3_t = a2_t/(c1_t*c3_t*t2)
-
-        return c1_t, r3_t
-
-    def calc_a0( self, 
-                 kphi, 
-                 kvco, 
-                 N, 
-                 fc, 
-                 t1, 
-                 t2, 
-                 t3,
-                 t4):
-        omega_c = 2*np.pi*fc
-        k1 = kphi*kvco/((omega_c**2)*(N))
-        k2 = np.sqrt(
-                (1+(omega_c*t2)**2)/((1+(omega_c*t1)**2)*(1+(omega_c*t3)**2)*(1+(omega_c*t4)**2) ) 
-                    )
-        return k1*k2
-
-    def calc_t1(self, 
-                fc, 
-                pm, 
-                gamma,
-                t31=0.4,
-                t43=0.4,
-                num_iters=100):
-        """ numerically solve for t1 using the bisection method
-            see: https://en.wikibooks.org/wiki/Numerical_Methods/Equation_Solving
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        gamma (float) - optimization factor (1.136)
-        num_iters (int) - number of times to loop
+    def get_loop_gains(self, coeffs=None, comps=None, fstart=100, fstop=10e6, num_pts=100):
         """
-        a = 1e-15   # initial guess for a
-        b = 1.0       # initial guess for b
-        fa = self.func_t1(a,fc,pm,t31=t31,t43=t43,gamma=gamma)
-        fb = self.func_t1(b,fc,pm,t31=t31,t43=t43,gamma=gamma)
-        for i in range(num_iters):
-            guess = (a+b)/2
-            if (self.func_t1(guess,fc,pm,t31=t31,t43=t43,gamma=gamma) < 0):
-                b = guess
-            else:
-                a = guess
-        return guess
-
-    def func_t1(self,
-                x, 
-                fc, 
-                pm,
-                t31=0.4, 
-                t43=0.4, 
-                gamma=1.136):
-        """ simulate t1. This function is used to 
-        numerically solve for T1. 
-        Equation 22.31 in Dean Banerjee's Book
-        :Parameters:
-        x (float) - guess at t1
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        t31 (float) - ratio of t3 to t1
-        gamma (float) - optimization factor (1.136)
-        :Returns:
-        updated value for t1 based on guess (float)
+        get the closed loop gain from the reference input to the 
+        vco output in dB.
         """
-        omega_c = 2*np.pi*fc
-        phi = pm*np.pi/180
-        val = np.arctan( gamma/(omega_c*x*(1+t31)) ) - \
-                np.arctan( omega_c*x ) - \
-                np.arctan( omega_c*x*t31 ) -\
-                np.arctan( omega_c*x*t31*t43 ) - phi
-        return val
-
-class PllFourthOrderPassive2(PllSecondOrderPassive):
-    def __init__(self,
-                 fc,
-                 pm,
-                 kphi,
-                 kvco,
-                 N,
-                 gamma=1.115):
-        """
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        kphi (float) - charge pump gain in Amps per radian
-        kvco (float) - vco tuning sensitivity in Hz/V
-        N (int) - loop multiplication ratio
-        gamma (float) - optimization factor (default=1.115)
-        t31 (float) - ratio of T3 to T1 (default=0.4)
-        t43 (float) - ratio of T4 to T3 (default=0.4)
-            note: for a realizable solution, t31 + t43 <= 1
-        """
-        self.fc = fc
-        self.pm = pm
-        self.kphi = kphi
-        self.kvco = kvco
-        self.N = N
-        self.gamma = gamma
-        self.pole3 = fc*30
-        self.pole4 = fc*10
-
-    def calc_t1(self, 
-                fc, 
-                pm, 
-                gamma,
-                num_iters=100,
-                plotme=False):
-        """ numerically solve for t1 using the bisection method
-            see: https://en.wikibooks.org/wiki/Numerical_Methods/Equation_Solving
-        :Parameters:
-        fc (float) - cutoff frequency in Hz
-        pm (float) - phase margin in degrees
-        gamma (float) - optimization factor (1.136)
-        num_iters (int) - number of times to loop
-        """
-        a = 1e-15   # initial guess for a
-        b = 1.0       # initial guess for b
-        fa = self.func_t1(a,fc,pm,gamma=gamma)
-        fb = self.func_t1(b,fc,pm,gamma=gamma)
-        for i in range(num_iters):
-            guess = (a+b)/2
-            if (self.func_t1(guess,fc,pm,gamma=gamma) < 0):
-                b = guess
-            else:
-                a = guess
-            if plotme:
-                x = np.linspace(a,b,1000)
-                y = []
-                for xx in x:
-                    y.append(self.func_t1(xx,fc,pm,gamma=gamma) )
-                fig, ax = plt.subplots()
-                ax.plot(x,y,'r',label='func_t1')
-                plt.grid(True)
-                plt.show()
-        return guess
-
-    def func_t1(self,
-                t1, 
-                fc, 
-                pm,
-                gamma=1.115):
-        """ simulate t1. This function is used to 
-        numerically solve for T1. 
-        """
-        omega_c = 2*np.pi*fc
-        phi = pm*np.pi/180
-        t3 = 1.0/self.pole3
-        t4 = 1.0/self.pole4
-        # val = np.arctan2( 1.0, ( (omega_c)*(t1*t3*t4) )/gamma ) - \
-        #       np.arctan2( 1.0, 1.0/omega_c*t1 ) - \
-        #       np.arctan2( 1.0, 1.0/omega_c*t3 ) - \
-        #       np.croarctan2( 1.0, 1.0/omega_c*t1*t4 ) - phi
-        val = np.arctan( gamma/( (omega_c)*(t1*t3*t4) ) ) - \
-              np.arctan( omega_c*t1 ) - \
-              np.arctan( omega_c*t3 ) - \
-              np.arctan( omega_c*t1*t4 ) - phi 
-        return val
-
-    def calc_components(self):
-        """ return a dict with the component values """
-        d = {}
-        omega_c = 2*np.pi*self.fc
-
-        d['pole3'] = self.pole3
-        d['pole4'] = self.pole4
-        # solve for time constants
-        d['t1'] = self.calc_t1( self.fc,
-                                self.pm,
-                                gamma=self.gamma )
-        d['pole1'] = 1.0/d['t1']
-
-        d['t3'] = 1.0/self.pole3
-        d['t4'] = 1.0/self.pole4
-  
-        d['t2'] = self.gamma/( (omega_c**2)*(d['t1'] + d['t3'] + d['t4'] ) )
-        d['zero'] = 1.0/d['t2']
-        # solve for coefficients
-        # d['a0'] = self.calc_a0(self.kphi, 
-        #                        self.kvco, 
-        #                        self.N, 
-        #                        self.fc, 
-        #                        d['t1'],
-        #                        d['t2'],
-        #                        d['t3'],
-        #                        d['t4'])
+        if (coeffs == None) and (comps == None):
+            coeffs = calc_coeffs_from_loop_vals(self.get_loop_values())
+        elif (coeffs == None) and not(comps == None):
+            coeffs = calc_coeffs_from_comps(comps, order=self.order, active=self.active)
+        
+        # f = get_log_freq_points(fstart, fstop, num_pts=num_pts)
+        f = logify_freq(fstart, fstop, num_pts=num_pts)
+        # loop filter impedance
+        # z = (1 + s*t2)/(s*(a[3]*s**3 + a[2]*s**2 + a[1]*s + a[0])) 
+        z = calculateZ(f,  
+                       coeffs['t2'], 
+                       coeffs['a0'], 
+                       coeffs['a1'],
+                       coeffs['a2'],
+                       coeffs['a3'])
     
-        # d['a1'] = d['a0']*(d['t1'] + d['t3'] + d['t4'])
-        # d['a2'] = d['a0']*(d['t1']*d['t3'] + d['t1']*d['t4'] + d['t3']*d['t4'])
-        # d['a3'] = d['a0']*d['t1']*d['t3']*d['t4']
-
-        # c1_t3, r3_t3 = self.calc_c1_r3(d['a0'],d['t1'],d['t2'],d['t3'])
-        # c1_t4, r3_t4 = self.calc_c1_r3(d['a0'],d['t1'],d['t2'],d['t4'])
-
-        # d['c1'] = (c1_t3 + c1_t4)/2
-        # d['r3'] = (r3_t3 + r3_t4)/2
-
-        # d['c2'], d['c3'] = self.calc_c2_c3( d['a0'],
-        #                            d['a1'],
-        #                            d['a2'],
-        #                            d['a3'],
-        #                            d['t2'],
-        #                            d['r3'],
-        #                            d['c1'] )
-      
-        # d['c4'] = d['a0']- d['c1']- d['c2'] - d['c3']
-
-        # d['r2'] = d['t2']/d['c2']
-
-        # d['r4'] = d['a3']/(d['t2']*d['r3']*d['c1']*d['c3']*d['c4'])
-
-
+        # G(s)
+        # g = kphi*kvco*z/s
+        g = calculateG(f, z, self.kphi, self.kvco)
+    
+        # # Open-loop gain 
+        g_ol = g/self.N
+        g_ol_db = 20*np.log10(np.absolute(g_ol))
+        # ph_ol = 180 + np.unwrap(np.angle(g_ol))*180/np.pi
+        ph_ol = np.unwrap(np.angle(g_ol))*180/np.pi
+    
+        # # Closed-loop reference transfer gain
+        cl_r = (1.0/self.R)*(g/(1+g/self.N))
+        cl_r_db = 20*np.log10(np.absolute(cl_r))
+   
+        # # Gain of the IC figure of merit (used for phase noise)
+        cl_ic = (g/(1+g/self.N))
+        cl_ic_db = 20*np.log10(np.absolute(cl_r)) + 20*np.log10(self.R)
+        
+        # # Closed-loop VCO transfer gain
+        cl_vco = 1.0/(1+g/self.N)
+        cl_vco_db = 20*np.log10(np.absolute(cl_vco))
+    
+        # convert gains and phases to lists
+        # cannot return numpy array to javascript
+        g = []
+        p = []
+        g.extend(g_ol_db)
+        p.extend(ph_ol)
+        try:
+            fz, pz = getInterpolatedFzeroPzero(f, g, p)
+        except Exception as e:
+            fz = 0
+            pz = 0
+        ref_cl = []
+        vco_cl = []
+        ref_cl.extend(cl_r_db)
+        vco_cl.extend(cl_vco_db)
+        d = { 'freqs':f,
+              'gains':g,
+              'phases':p,
+              'fzero': fz,
+              'pzero': pz,
+              'ref_cl': ref_cl,
+              'ic_cl': cl_ic_db,
+              'vco_cl': vco_cl,
+            }
         return d
 
+    def get_phase_noise(self,   
+                        ref_pn_dict=None, 
+                        vco_pn_dict=None, 
+                        ref_freq_Hz=10e6, 
+                        fstart_Hz=100, 
+                        fstop_Hz=10e6, 
+                        pllFom=-229, 
+                        pllFlicker=None,
+                        coeffs=None,
+                        comps=None, 
+                        num_pts=100):
+        """
+        :Args:
+            :ref_pn_dict (dict):            keys: 'f', 'pn'
+            :vco_pn_dict (dict):            keys: 'f', 'pn'
+            :ref_freq_Hz (float):           reference frequency in Hz
+            :fstart_Hz (float):             offset start phase noise
+            :fstop_Hz (float):              offset start phase noise
+            :pllFom (float):                PLL IC Figure of Merit
+            :pllFlicker (float):            PLL IC flicker
+            :coeffs (dict):                 if provided, use pll coefficients
+            :comps (dict):                  if provided, use pll loop filter components
+            :num_pts (int):                 number of phase noise points to simulate across band
+        """
+        fpfd = self.ref_freq_Hz/self.R
+        
+        # # get interpolated phase noise at the simulation frequency points
+        # f, refPn = interp_semilogx(ref_pn_dict['f'], ref_pn_dict['pn'], num_points=num_points)
+        # f, vcoPn = interp_semilogx(vco_pn_dict['f'], vco_pn_dict['pn'], num_points=num_points)
+        
+        # get loop gains  
+        gains = self.get_loop_gains(coeffs=coeffs, comps=comps, fstart=fstart_Hz, fstop=fstop_Hz, num_pts=num_pts)
+      
+        if ref_pn_dict == None:
+            ref_pn_dict = {'f':     [fstart_Hz, fstop_Hz],
+                           'pn':    [-200, -200]}
+        if vco_pn_dict == None:
+            vco_pn_dict = {'f':     [fstart_Hz, fstop_Hz],
+                           'pn':    [-200, -200]}
+        
+        refPn = interp_phase_noise(ref_pn_dict['f'], ref_pn_dict['pn'], gains['freqs'])
+        vcoPn = interp_phase_noise(vco_pn_dict['f'], vco_pn_dict['pn'], gains['freqs'])
+        
+        # multiply refPn by gains['ref_cl']
+        refPnOut = np.array(refPn) + np.array(gains['ref_cl'])
+        refPn = []
+        refPn.extend(refPnOut)
+    
+        icPnOut = pllFom + 10*np.log10(fpfd) + np.array(gains['ic_cl'])
+        icPn = []
+        icPn.extend(icPnOut)    # need to make a list so it can go be sent via web
+   
+        icFlick = []
+        if pllFlicker == None:
+            icFlickerOut = -200*np.ones(len(gains['freqs']))
+        else:
+            icFlickerOut = pllFlicker + 20*np.log10(fpfd) - 10*np.log10(10e3/np.array(gains['freqs'])) + np.array(gains['ic_cl'])
+        icFlick.extend(icFlickerOut)
+    
+        vcoPnOut = np.array(vcoPn) + np.array(gains['vco_cl'])
+        vcoPn = []
+        vcoPn.extend(vcoPnOut)
+    
+        compPn = []
+        for i in range(len(gains['freqs'])):
+            compPn.append(power_sum( [ refPnOut[i],
+                                      vcoPnOut[i],
+                                      icPnOut[i],
+                                      icFlickerOut[i] ] ))
+   
+        d = { 'freqs':      gains['freqs'],
+              'reference':  refPnOut,
+              'vco':        vcoPnOut,
+              'pll_ic':     icPn,
+              'flicker':    icFlick,
+              'composite':  compPn,
+            }
+        
+        return d
 
-def plot_arctan( ):
-    x = np.linspace(-np.pi/2,np.pi/2,1000)
-
-    y1 = np.arctan(x)
-    y2 = np.arctan2(1, 1/x)
-
-    fig, ax = plt.subplots()
-    ax.plot(x,y1,'r',label='arctan')
-    ax.plot(x,y2,'g',label='arctan2')
-    legend = ax.legend()
-    plt.grid(True)
-    plt.show()
-
-
-def callSimulatePll( d ):
+def callSimulatePll(d):
     """
     """
     fstart =            d['fstart'] 
@@ -785,23 +266,19 @@ def callSimulatePll( d ):
             'flt_type':flt_type
             }
 
-    f, g, p, fz, pz, ref_cl, vco_cl = simulatePll( fstart,
-                                                   fstop,
-                                                   ptsPerDec,
-                                                   kphi,
-                                                   kvco,
-                                                   N,
-                                                   R,
-                                                   filt=flt )
+    if (r3 == 0) and (r4 == 0):
+        order = 2
+        gamma = 1.024
+    elif (r3 != 0) and (r4 == 0):
+        order = 3
+        gamma = 1.136
+    else:
+        order = 4
+        gamma = 1.136
     
-    d = { 'freqs':f,
-          'gains':g,
-          'phases':p,
-          'fzero': fz,
-          'pzero': pz,
-          'ref_cl': ref_cl,
-          'vco_cl': vco_cl,
-        }
+    pll = PhaseLockedLoop(fc, 48, kphi, kvco, N, gamma=gamma, order=order, active=False)
+    d = pll.get_loop_gains(comps=d, fstart=fstart, fstop=fstop, ptsPerDec=ptsPerDec)
+    
     return d
 
 def getInterpolatedFzeroPzero( f, g, p ):
@@ -833,99 +310,6 @@ def getIndexZeroDbCrossover( g ):
         if g[i] <= 0:
             return i
     return None
-
-def simulatePll( fstart, 
-                 fstop, 
-                 ptsPerDec,
-                 kphi,
-                 kvco,
-                 N,
-                 R,
-                 filt=None,
-                 coeffs=None ):
-    """ simulate an arbitrary phase-locked loop using either
-    filter coefficients or component values. return 3 lists:
-    f (frequencies), g_ol (open-loop gain), phases (open-loop phases)  
-    """
-    f = get_freq_points_per_decade(fstart, fstop, ptsPerDec)
-
-    if coeffs == None:
-        c1 = filt['c1']
-        c2 = filt['c2']
-        r2 = filt['r2']
-        if 'r3' not in filt.keys():
-            r3 = 0
-            c3 = 0
-        else:
-            c3 = filt['c3']
-            r3 = filt['r3']
-
-        if 'r4' not in filt.keys():
-            r4 = 0
-            c4 = 0
-        else:
-            c4 = filt['c4']
-            r4 = filt['r4']
-
-        coeffs = calculateCoefficients( c1=c1,
-                                        c2=c2,
-                                        c3=c3,
-                                        c4=c4,
-                                        r2=r2,
-                                        r3=r3,
-                                        r4=r4,
-                                        flt_type=filt['flt_type'])
-    a = coeffs
-    t2 = filt['r2']*filt['c2']
-    if len(a) == 2:
-        # 2nd order
-        a.append(0)    
-        a.append(0)    
-    elif len(a) == 3:
-        # 3rd order
-        a.append(0)    
-    else:
-        pass
-
-    # loop filter impedance
-    # z = (1 + s*t2)/(s*(a[3]*s**3 + a[2]*s**2 + a[1]*s + a[0])) 
-    z = calculateZ( f,  
-                    t2, 
-                    a[0], 
-                    a[1],
-                    a[2],
-                    a[3] )
-
-    # G(s)
-    # g = kphi*kvco*z/s
-    g = calculateG( f, z, kphi, kvco )
-
-    # # Open-loop gain 
-    g_ol = g/N
-    g_ol_db = 10*np.log10(np.absolute(g_ol))
-    # ph_ol = 180 + np.unwrap(np.angle(g_ol))*180/np.pi
-    ph_ol = np.unwrap(np.angle(g_ol))*180/np.pi
-
-    # # Closed-loop reference transfer gain
-    cl_r = (1.0/R)*(g/(1+g/N))
-    cl_r_db = 20*np.log10(np.absolute(cl_r))
-
-    # # Closed-loop VCO transfer gain
-    cl_vco = 1.0/(1+g/N)
-    cl_vco_db = 20*np.log10(np.absolute(cl_vco))
-
-    # convert gains and phases to lists
-    # cannot return numpy array to javascript
-    g = []
-    p = []
-    g.extend(g_ol_db)
-    p.extend(ph_ol)
-    fz, pz = getInterpolatedFzeroPzero( f, g, p )
-    ref_cl = []
-    vco_cl = []
-    ref_cl.extend(cl_r_db)
-    vco_cl.extend(cl_vco_db)
-    return f, g, p, fz, pz, ref_cl, vco_cl
 
 def plotSimulatePhaseNoise():
     kphi = 5e-3
@@ -964,22 +348,6 @@ def plotSimulatePhaseNoise():
                                                                R,
                                                                filt=flt )
 
-    # print(type(f))
-    # print(type(refPn))
-    # print(type(vcoPn))
-    # print(type(icPn))
-    # print(type(icFlick))
-    # print(type(comp))
-
-    fig, ax = plt.subplots()
-    ax.semilogx(f,refPn,'r',label='ref')
-    ax.semilogx(f,vcoPn,'b',label='vco')
-    ax.semilogx(f,icPn,'g',label='pll')
-    ax.semilogx(f,icFlick,'c',label='flick')
-    ax.semilogx(f,comp,'k',linewidth=2,label='total')
-    legend = ax.legend()
-    plt.grid(True)
-    plt.show()
     return f, refPn, vcoPn, icPn, icFlick, comp
 
 def interp_semilogx(x, y, num_points):
@@ -1014,20 +382,6 @@ def interp_semilogx(x, y, num_points):
 
     # f = [xx**(f_log) for xx in f_log]
     return f, y_interp
-    # # return x_new, y_new
-    # return log_x, y
-    # # x_new, y_new = interp_linear(log_x, y, x_interp) 
-    # # return x_new, y_new
-    # x_new, y_new = interp_linear(x, y, x_interp) 
-    # return x_new, y_new
-
-def plot_interp_semilogx(x, y, num_points=10):
-    """
-    """
-    x2, y2 = interp_semilogx(x, y, num_points=num_points)
-    plt.semilogx(x, y, '-bo', x2, y2, 'ro')
-    plt.grid(True)
-    plt.show() 
 
 def linspace(a, b, num_points):
     """ return a list of linearly spaced values
@@ -1038,14 +392,6 @@ def linspace(a, b, num_points):
     for i in range(num_points):
         ret_ar.append(a + i*inc)
     return ret_ar
-
-def plot_interp_linear(x, y, x_interp):
-    """
-    """
-    x2, y2 = interp_linear(x, y, x_interp)
-    plt.plot(x, y, '-bo', [x2], [y2], 'ro')
-    plt.grid(True)
-    plt.show() 
 
 def interp_linear(x, y, x_interp):
     """ linearly interpolate between two points with the
@@ -1107,7 +453,7 @@ def get_freq_points_per_decade(fstart, fstop, ptsPerDec):
             ar.append(float(val))
     return ar    
 
-def simulatePhaseNoise2( f, 
+def simulatePhaseNoise2(f, 
                         refPn,
                         vcoPn,
                         pllFom,
@@ -1206,18 +552,18 @@ def simulatePhaseNoise2( f,
     return freq, refPn, vcoPn, icPn, compPn
 
 
-def simulatePhaseNoise( f, 
-                        refPn,
-                        vcoPn,
-                        pllFom,
-                        pllFlicker,
-                        kphi,
-                        kvco,
-                        fpfd,
-                        N,
-                        R,
-                        filt=None,
-                        coeffs=None ):
+def simulatePhaseNoise(f, 
+                       refPn,
+                       vcoPn,
+                       pllFom,
+                       pllFlicker,
+                       kphi,
+                       kvco,
+                       fpfd,
+                       N,
+                       R,
+                       filt=None,
+                       coeffs=None):
     """ simulate an arbitrary phase-locked loop using either
     filter coefficients or component values. return 3 lists:
     f (frequencies), g_ol (open-loop gain), phases (open-loop phases)  
@@ -1372,5 +718,504 @@ def callGetInterpolatedPhaseNoise(d):
         }
 
     return d
+
+def calc_coeffs_from_loop_vals(d, order=2, active=False):
+    """
+    calculate coefficients from the pll loop values
+    :Args:
+        :d (dict):          dictionary returned from PhaseLockedLoop.get_values()
+            :keys:
+                :fc, pm, gamma, kphi, kvco, N, order, R, t31, t43, active:
+        :order (int):       < 2 | 3 | 4 >
+        :active (bool):     Use active filter equations if True
+    :Returns:
+        dict 
+        :keys:
+            :t1:    
+            :t2:    
+            :t3:    
+            :t4:    
+            :a0:
+            :a1:
+            :a2:
+            :a3:
+    """
+    # local variables to make formulas easier to read
+    fc = float(d['fc'])
+    kphi = float(d['kphi'])
+    kvco = float(d['kvco'])
+    pm = float(d['pm'])
+    N = float(d['N'])
+    R = float(d['R'])
+    gamma = float(d['gamma'])
+    t31 = float(d['t31'])
+    t43 = float(d['t43'])
+    try:
+        order = int(d['order'])
+    except KeyError:
+        order = order
+    try:
+        active = bool(int(d['active']))
+    except KeyError:
+        active = active
+    ret = {}
+    # find poles
+    t1 = calc_t1(fc, pm, gamma, t31=t31, t43=t43, num_iters=100)
+    t3 = t1*t31
+    t4 = t1*t31*t43
+    t2 = calc_t2(fc, t1, t3, t4, gamma=gamma)
+    ret['t1'] = t1
+    ret['t2'] = t2
+    ret['t3'] = t3
+    ret['t4'] = t4
+
+    # calculate coefficients
+    a0 = calc_a0(kphi, kvco, N, fc, t1, t2, t3=t3, t4=t4)
+    a1 = calc_a1(a0, t1, t3, t4)
+    a2 = calc_a2(a0, t1, t3, t4)
+    a3 = calc_a3(a0, t1, t3, t4)
+    ret['a0'] = a0
+    ret['a1'] = a1
+    ret['a2'] = a2
+    ret['a3'] = a3
+    
+    return ret 
+
+def calc_components_from_coeffs(d, order=2, active=False):
+    """
+    calculate component values from coefficients and poles
+    :Args:
+        :d (dict):          dictionary returned from PhaseLockedLoop.get_values()
+            :keys:
+                :t1, t2, t3, t4, a0, a1, a2, a3:
+        :order (int):       < 2 | 3 | 4 >
+        :active (bool):     Use active filter equations if True
+    :Returns:
+        dict with component values
+            :keys:
+                :c1, r2, c2, r3, c3, r4, c4:
+    """
+    # local variables to make formulas easier to read
+    a0 = d['a0']
+    a1 = d['a1']
+    a2 = d['a2']
+    a3 = d['a3']
+    t1 = d['t1']
+    t2 = d['t2']
+    t3 = d['t3']
+    t4 = d['t4']
+
+    c = {}
+    c['c1'] = 0
+    c['r2'] = 0
+    c['c2'] = 0
+    c['r3'] = 0
+    c['c3'] = 0
+    c['r4'] = 0
+    c['c4'] = 0
+
+    # SOLVE C1
+    if order == 2:
+        c1 = a0*t1/t2
+        c['c1'] = c1
+    elif order == 3:
+        c1 = (a2/(t2**2))*(1 + np.sqrt(1 + (t2/a2)*(t2*a0 - a1)))
+        c['c1'] = c1
+    elif order == 4:
+        # actually solves C1 and R3 together
+        
+        # solve using pole t3
+        a1_t3 = a0*(t1 + t3)
+        a2_t3 = a0*t1*t3
+        c1_t3 = (a2_t3/(t2**2))*(1 + np.sqrt(1 + (t2/a2_t3)*(t2*a0 - a1_t3)))
+        c3_t3 = (-1*(t2**2)*(c1_t3**2) + t2*a1_t3*c1_t3 - a2_t3*a0)/((t2**2)*c1_t3 - a2_t3)
+        r3_t3 = a2_t3/(c1_t3*c3_t3*t2)
+        # c['a1_t3'] = a1_t3
+        # c['a2_t3'] = a2_t3
+        # c['c1_t3'] = c1_t3
+        # c['c3_t3'] = c3_t3
+        # c['r3_t3'] = r3_t3
+        
+        # solve using pole t4
+        a1_t4 = a0*(t1 + t4)
+        a2_t4 = a0*t1*t4
+        c1_t4 = (a2_t4/(t2**2))*(1 + np.sqrt(1 + (t2/a2_t4)*(t2*a0 - a1_t4)) )
+        c3_t4 = (-1*(t2**2)*(c1_t4**2) + t2*a1_t4*c1_t4 - a2_t4*a0)/((t2**2)*c1_t4 - a2_t4)
+        r3_t4 = a2_t4/(c1_t4*c3_t4*t2)
+        # c['a1_t4'] = a1_t4 
+        # c['a2_t4'] = a2_t4
+        # c['c1_t4'] = c1_t4
+        # c['c3_t4'] = c3_t4
+        # c['r3_t4'] = r3_t4
+
+        c1 = (c1_t3 + c1_t4)/2
+        r3 = (r3_t3 + r3_t4)/2
+        c['c1'] = c1
+        c['r3'] = r3
+    else:
+        raise ValueError("value passed to order of {} is not valid".format(order))
+    
+    # SOLVE C2 and C3
+    if order == 2:
+        c2 =  a0 - c1
+        c['c2'] =  c2
+    elif order == 3:
+        c3 = ((-t2**2)*(c1**2) + t2*a1*c1 - a2*a0)/((t2**2)*c1 - a2)
+        c2 = a0 - c1 - c3
+        c['c3'] = c3
+        c['c2'] = c2
+        r3 = a2/(c1*c3*t2)
+        c['r3'] = r3
+    elif order == 4:
+        k0 = (a2/a3) - 1.0/t2 - 1.0/(c1*r3) - (a0 - c1)*t2*r3*c1/a3
+        k1 = a1 - t2*a0 - a3/(t2*r3*c1) - (a0 - c1)*r3*c1
+        a_val = a3/((t2*c1)**2)
+        b_val = t2 + r3*(c1 - a0) + (a3/(t2*c1))*((1.0/t2) - k0)
+        c_val = k1 - (k0*a3)/t2
+        c2 = (-b_val + np.sqrt(b_val**2 - 4*a_val*c_val))/(2*a_val)
+        c3 = (t2*a3*c1)/(r3*(k0*t2*a3*c1 - c2*(a3 - r3*((t2*c1)**2))))
+        c['c3'] = c3
+        c['c2'] = c2
+
+    # SOLVE FOR R2
+    r2 =  t2/c2
+    c['r2'] = r2
+
+    # SOLVE FOR R4, C4
+    if order == 4:
+        c4 = a0 - c1 - c2 - c3
+        c['c4'] = c4
+        r4 = a3/(t2*r3*c1*c3*c4)
+        c['r4'] = r4
+    
+    return c
+
+####################################3
+# 
+#   1. Calculate t1
+#   2. Calculate t3 (0 if 2nd order, t3=t31*t1 if 3rd order)
+#   2. Calculate t4 (0 if 2nd or 3rd order, t4=t31*t1*t43 if 4th order)
+#   3. Calculate t2
+#   4. solve for a0
+#   5. solve for a1
+#   6. solve for a2
+#   7. solve for a3
+
+def calc_t1(fc, pm, gamma, t31=0, t43=0, num_iters=100):
+    """ 
+    numerically solve for t1 using the bisection method
+    see: https://en.wikibooks.org/wiki/Numerical_Methods/Equation_Solving
+    :Parameters:
+    fc (float) - cutoff frequency in Hz
+    pm (float) - phase margin in degrees
+    gamma (float) - optimization factor (1.136)
+    t31 (float) - ratio of t3 to t1. ONLY FOR 3rd order or greater
+    t43 (float) - ratio of t4 to t3. ONLY FOR 4th order
+    num_iters (int) - number of times to loop
+    """
+    a = 1e-15           # initial guess for a
+    b = 1.0             # initial guess for b
+    fa = func_t1(a, fc, pm, t31=t31, t43=t43, gamma=gamma)
+    fb = func_t1(b, fc, pm, t31=t31, t43=t43, gamma=gamma)
+    for i in range(num_iters):
+        guess = (a+b)/2
+        if (func_t1(guess, fc, pm, t31=t31, t43=t43, gamma=gamma) < 0):
+            b = guess
+        else:
+            a = guess
+    return guess
+
+def calc_t2(fc, t1, t3=0, t4=0, gamma=1.024):
+    """
+    :Parameters:
+        fc (float) - cutoff frequency in Hz
+        t1 (float) - time constant t1 in seconds
+        t3 (float) - time constant t3 in seconds. ONLY FOR 3rd order or greater
+        gamma (float) - optimization factor (default=1.024)
+    :Returns:
+        t2 as float
+    """
+    omega_c = 2*np.pi*fc
+    return gamma/((omega_c**2)*(t1 + t3 + t4))
+ 
+def calc_t3(t1, t31):
+    return t1*t31
+
+def calc_t4(t1, t31, t43):
+    return t1*t31*t43
+
+def func_t1(x, fc, pm, t31=0.4, t43=0.4, gamma=1.136):
+    """ 
+    simulate t1. This function is used to 
+    numerically solve for T1. 
+    Equation 22.31 in Dean Banerjee's Book
+    :Parameters:
+    x (float) - guess at t1
+    fc (float) - cutoff frequency in Hz
+    pm (float) - phase margin in degrees
+    t31 (float) - ratio of t3 to t1. ONLY FOR 3rd order or greater
+    t43 (float) - ratio of t4 to t3. ONLY FOR 4th order
+    gamma (float) - optimization factor (1.136)
+    :Returns:
+    updated value for t1 based on guess (float)
+    """
+    omega_c = 2*np.pi*fc
+    phi = pm*np.pi/180
+    val = np.arctan( gamma/(omega_c*x*(1+t31 + t31*t43)) ) - \
+            np.arctan( omega_c*x ) - \
+            np.arctan( omega_c*x*t31 ) -\
+            np.arctan( omega_c*x*t31*t43 ) - phi
+    return val
+
+############################################################
+# GET COEFFICIENTS FROM LOOP VALUES AND TIME CONSTANTS
+############################################################
+def calc_a0(kphi, kvco, N, fc, t1, t2, t3=0, t4=0):
+    """
+    return a0 coefficient
+    :Args:
+        :kphi (float):
+        :kvco (float):
+        :N (int):
+        :fc (float):
+        :t1 (float):
+        :t2 (float):
+        :t3 (float):
+        :t4 (float):
+    """
+    omega_c = 2*np.pi*fc
+    k1 = kphi*kvco/((omega_c**2)*(N))
+    k2 = np.sqrt(
+            (1+(omega_c*t2)**2)/((1+(omega_c*t1)**2)*(1+(omega_c*t3)**2)*(1+(omega_c*t4)**2) ) 
+                )
+    return k1*k2
+
+def calc_a1(a0, t1, t3, t4):
+    return a0*(t1 + t3 + t4)
+
+def calc_a2(a0, t1, t3, t4):
+    return a0*(t1*t3 + t1*t4 + t3*t4)
+
+def calc_a3(a0, t1, t3, t4):
+    return a0*t1*t3*t4
+
+############################################################
+# GET COEFFICIENTS FROM COMPONENTS
+############################################################
+def calc_coeffs_from_comps(c, order=2, active=False):
+    """
+    calculate coefficients from component values
+    :Args:
+        :c (dict):          dictionary returned from calc_components()
+            :keys:
+                :c1, c2, c3, c4, r2, r3, r4:
+        :order (int):       < 2 | 3 | 4 >
+        :active (bool):     Use active filter equations if True
+    :Returns:
+        dict with component values
+            :keys:
+                :t1, t2, t3, t4, a0, a1, a2, a3:
+    """
+    # local variables to make formulas easier to read
+    c1 = c['c1']
+    c2 = c['c2']
+    c3 = c['c3']
+    c4 = c['c4']
+    r2 = c['r2']
+    r3 = c['r3']
+    r4 = c['r4']
+    a0 = get_a0(c1, c2, r2, c3=c3, r3=r3, c4=c4, r4=r4, active=active) 
+    a1 = get_a1(c1, c2, r2, c3=c3, r3=r3, c4=c4, r4=r4, active=active) 
+    a2 = get_a2(c1, c2, r2, c3=c3, r3=r3, c4=c4, r4=r4, active=active) 
+    a3 = get_a3(c1, c2, r2, c3=c3, r3=r3, c4=c4, r4=r4)
+    
+    d = {}
+    d['a0'] = a0
+    d['a1'] = a1
+    d['a2'] = a2
+    d['a3'] = a3
+    # calculate poles
+    t2 = r2*c2
+
+        # solve t1, t3 and t4
+    if active:
+        t1 = c1*c2*r2/(c1 + c2)
+        if order == 2:
+            t3 = 0
+            t4 = 0
+        elif order == 3:
+            t3 = c2*r3
+            t4 = 0
+        elif order == 4:
+            x = c3*r3 + c4*r4 + c4*r3
+            y = np.sqrt(x**2 - 4*(c3*c4*r3*r4))
+            t3 = (x + y)/2
+            t4 = (x - y)/2
+    else:   # passive
+        if order == 2: 
+            t1 = c1*c2*r2/(c1 + c2)
+            t3 = 0
+            t4 = 0
+        elif order == 3:
+            t1 = (a1 + np.sqrt(a1**2 -4*a0*a2))/(2*a0)
+            t3 = (a1 - np.sqrt(a1**2 -4*a0*a2))/(2*a0)
+            t4 = 0
+        elif order == 4:
+            # A = 1
+            # B = (a1/a0) - t1
+            # C = a3/(a0*1)
+            # coeffs = [A, B, C]
+            # roots = np.roots(coeffs)
+        
+            A = (-2*a1/a0)
+            B = ((a1**2)/(a0**2) + a2/a0)
+            C = (a3/a0 - a1*a2/(a0**2))
+            coeffs = [1, A, B, C]
+            roots = np.roots(coeffs)
+            t1 = 0
+            t3 = 0
+            t4 = 0
+            d['coeffs'] = [A, B, C]
+            d['roots'] = roots
+       
+    d['t1'] = t1
+    d['t2'] = t2
+    d['t3'] = t3
+    d['t4'] = t4
+     
+    return d
+
+def get_a0(c1, c2, r2, c3=0, r3=0, c4=0, r4=0, active=False):
+    """
+    return a0 coefficient based on component values
+    """
+    if active:
+        return c1*c2
+    else:
+        return c1 + c2 + c3 + c4
+
+def get_a1(c1, c2, r2, c3=0, r3=0, c4=0, r4=0, active=False):
+    """
+    return a1 coefficient based on component values
+    """
+    if active:
+        return c1*c2*r2 + (c1+c2)*(c3*r3 + c4*r4 + c4*r3)
+    else:
+        return c2*r2*(c1+c3+c4) + r3*(c1+c2)*(c3+c4) + c4*r4*(c1+c2+c3)
+
+
+def get_a2(c1, c2, r2, c3=0, r3=0, c4=0, r4=0, active=False):
+    """
+    return a2 coefficient based on component values
+    """
+    if active:
+        return c3*c4*r3*r4*(c1+c2) + c1*c2*r2*(c3+r3 + c4*r4 + c4*r3)
+    else:
+        return c1*c2*r2*r3*(c3+c4) + c4*r4*(c2*c3*r3+c1*c3*r3+c1*c2*r2+c2*c3*r2)
+
+def get_a3(c1, c2, r2, c3=0, r3=0, c4=0, r4=0):
+    """
+    return a3 coefficient based on component values
+    """
+    return c1*c2*c3*c4*r2*r3*r4
+
+def load_pll_from_file(fpath):
+    """
+    load a pll object from file. return the PhaseLockedLoop() object and the dict
+    """
+    fo = open(fpath, 'r')
+    d = {}
+    lines = fo.readlines()
+    fo.close()
+    for line in lines:
+        try:
+            key = line.split(":")[0].strip()
+            val = line.split(":")[1].strip()
+        except:
+            break
+        d[key] = val
+    order = int(d['order'])
+    active = bool(int(d['active']))
+    fc = float(d['fc'])
+    pm = float(d['pm'])
+    gamma = float(d['gamma'])
+    N = float(d['N'])
+    R = float(d['R'])
+    kphi = float(d['kphi'])
+    kvco = float(d['kvco'])
+    t31 = float(d['t31'])
+    t43 = float(d['t43'])
+    p = PhaseLockedLoop(fc, pm, kphi, kvco, N, order=order, t31=t31, t43=t43, gamma=gamma)
+    return p, d
+
+def logify_freq(fstart, fstop, num_pts=100):
+    """
+    return a list of frequency points log scaled
+    so the resolution looks good on a semilogx() plot.
+    The frequency will start and finish at the nearest log10 value
+    """
+    n_start = int(np.floor(np.log10(fstart)))
+    n_stop = int(np.ceil(np.log10(fstop)))
+    f = np.logspace(n_start, n_stop, num_pts)
+    return f
+
+def interp_phase_noise(x, y, freq_array):
+    """ 
+    :Args:
+        x (list) - x values (frequencies)
+        y (list) - y values (phase noise or gain in dB)
+        freq_array (list) - list of frequencies to interpolate the phase noise
+    Note: x and y have a semilog X relationship.
+    Returns:
+        list of pn values
+    """
+    f_log = np.log10(freq_array)
+    y_interp = []
+    x_log = []
+    
+    for x_val in x:
+        x_log.append(math.log10(x_val))
+    
+    for xx in f_log:
+        y_temp = interp_linear(x_log, y, xx)
+        y_interp.append(y_temp[1])
+    
+    return y_interp
+
+def load_pn_file(fname):
+    """
+    """
+    fo = open(fname, 'r')
+    s = fo.read()
+    fo.close()
+    s = s.split("\n")
+    d = {
+         'f':[],
+         'pn':[],
+        }
+    f = []
+    pn = []
+    i = 0
+    for line in s:
+        if line.startswith("#"):
+            pass
+        else:
+            if ":" in line:
+                key = line.split()[0]
+                val = float(line.split()[1])
+                d[key] = val
+            else:
+                try:
+                    d['f'].append(float(line.split()[0]))
+                except Exception as e:
+                    return d
+                try:
+                    d['pn'].append(float(line.split()[1]))
+                except Exception as e:
+                    return d
+    return d
+
+
+
 
 

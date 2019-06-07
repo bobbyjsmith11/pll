@@ -1,13 +1,13 @@
 from setuptools import find_packages, setup
 
 def readme():
-    with open('README.rst') as f:
+    with open('README.md') as f:
         return f.read()
 
 setup(name='pll',
       version="0.1",
       description="Design and simulation of RF phase-locked loops",
-      long_desription=readme(),
+      long_description=readme(),
       classifiers=[
           'Development Status :: Alpha ::',
           'License :: OSI Approved :: MIT',
@@ -22,7 +22,8 @@ setup(name='pll',
       install_requires=[
           'numpy',
       ],
-      test_suit='nose.collector',
-      test_requires=['nose'],
+      test_suite='nose.collector',
+      tests_require=['nose',
+                     'matplotlib'],
       zip_safe=False
       )

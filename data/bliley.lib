@@ -1,0 +1,23 @@
+
+.model BVCB100MDEACCBN
+Kv = 3.7k
+F1 = 99.9962963M
+F2 = 100.0037037M
+V1 = 300m
+V2 =  3 
+PNTable = {
+10.0,-75.0,
+100,-100,
+1000,-130,
+1e+004,-145,
+1e+006,-155,
+1e+007,-160
+}
+PNFloor = -160 
+Power = 0
+OutputType = OP_SINE
+OutputVpp =  3 
+Vcc = 3.3 
+Icc =  15 
+.endmodel
+
