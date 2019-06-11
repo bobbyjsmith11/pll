@@ -43,7 +43,7 @@ def solveForComponents(fc, pm, kphi, kvco, N, gamma, loop_type='passive2'):
 class PhaseLockedLoop(object):
     """
     """
-    def __init__(self, fc, pm, kphi, kvco, N, ref_freq_Hz=10e6, R=1, order=2, t31=0, t43=0, gamma=1.024, active=False):
+    def __init__(self, fc, pm, kphi, kvco, N, ref_freq_Hz=10e6, R=1, order=2, t31=0, t43=0, gamma=1.024, active=False, pllFom=None, pllFlicker=None):
         """
         :args:
             :fc (float):            loop bandwidth in Hz
@@ -70,7 +70,13 @@ class PhaseLockedLoop(object):
         self.t31 = t31
         self.t43 = t43
         self.ref_freq_Hz = ref_freq_Hz
-        
+        self.pll_fom = pllFom
+        self.pll_flicker = pllFlicker
+       
+    def get_fpfd(self):
+        return (self.ref_freq_Hz/self.R)
+
+   
     def get_loop_values(self):
         """
         """
@@ -169,6 +175,7 @@ class PhaseLockedLoop(object):
                         comps=None, 
                         num_pts=100):
         """
+        NOTE: THIS FUNCITON DOES NOT CURRENTLY COVER LOOP FILTER NOISE (RESISTOR NOISE)
         :Args:
             :ref_pn_dict (dict):            keys: 'f', 'pn'
             :vco_pn_dict (dict):            keys: 'f', 'pn'
@@ -177,15 +184,13 @@ class PhaseLockedLoop(object):
             :fstop_Hz (float):              offset start phase noise
             :pllFom (float):                PLL IC Figure of Merit
             :pllFlicker (float):            PLL IC flicker
+                                            PN = pllFlicker + 10*log10(10kHz/f) + 20*log10(f_RF/1GHz)
+                                            This is "power summed" with the PLL IC noise
             :coeffs (dict):                 if provided, use pll coefficients
             :comps (dict):                  if provided, use pll loop filter components
             :num_pts (int):                 number of phase noise points to simulate across band
         """
         fpfd = self.ref_freq_Hz/self.R
-        
-        # # get interpolated phase noise at the simulation frequency points
-        # f, refPn = interp_semilogx(ref_pn_dict['f'], ref_pn_dict['pn'], num_points=num_points)
-        # f, vcoPn = interp_semilogx(vco_pn_dict['f'], vco_pn_dict['pn'], num_points=num_points)
         
         # get loop gains  
         gains = self.get_loop_gains(coeffs=coeffs, comps=comps, fstart=fstart_Hz, fstop=fstop_Hz, num_pts=num_pts)
@@ -196,7 +201,7 @@ class PhaseLockedLoop(object):
         if vco_pn_dict == None:
             vco_pn_dict = {'f':     [fstart_Hz, fstop_Hz],
                            'pn':    [-200, -200]}
-        
+       
         refPn = interp_phase_noise(ref_pn_dict['f'], ref_pn_dict['pn'], gains['freqs'])
         vcoPn = interp_phase_noise(vco_pn_dict['f'], vco_pn_dict['pn'], gains['freqs'])
         
@@ -209,29 +214,31 @@ class PhaseLockedLoop(object):
         icPn = []
         icPn.extend(icPnOut)    # need to make a list so it can go be sent via web
    
-        icFlick = []
-        if pllFlicker == None:
-            icFlickerOut = -200*np.ones(len(gains['freqs']))
-        else:
-            icFlickerOut = pllFlicker + 20*np.log10(fpfd) - 10*np.log10(10e3/np.array(gains['freqs'])) + np.array(gains['ic_cl'])
-        icFlick.extend(icFlickerOut)
-    
+        if pllFlicker != None:
+            # add flicker noise to the chip noise
+            icFlickerOut = pllFlicker + 10*np.log10(10e3/np.array(gains['freqs'])) + 20*np.log10(fpfd*self.N/1e9) + np.array(gains['ic_cl']) - 20*np.log10(self.N)
+            icFlick = []
+            icFlick.extend(icFlickerOut)
+            for i in range(len(gains['freqs'])):
+                icPn[i] = power_sum([icPnOut[i], icFlickerOut[i]])
+            icPnOut = np.array(icPn)
+        
         vcoPnOut = np.array(vcoPn) + np.array(gains['vco_cl'])
         vcoPn = []
         vcoPn.extend(vcoPnOut)
     
         compPn = []
         for i in range(len(gains['freqs'])):
-            compPn.append(power_sum( [ refPnOut[i],
+            compPn.append(power_sum( [ 
+                                      refPnOut[i],
                                       vcoPnOut[i],
                                       icPnOut[i],
-                                      icFlickerOut[i] ] ))
+                                      ] ))
    
         d = { 'freqs':      gains['freqs'],
               'reference':  refPnOut,
               'vco':        vcoPnOut,
               'pll_ic':     icPn,
-              'flicker':    icFlick,
               'composite':  compPn,
             }
         
@@ -452,203 +459,6 @@ def get_freq_points_per_decade(fstart, fstop, ptsPerDec):
             val = newDec + j*inc
             ar.append(float(val))
     return ar    
-
-def simulatePhaseNoise2(f, 
-                        refPn,
-                        vcoPn,
-                        pllFom,
-                        kphi,
-                        kvco,
-                        fpfd,
-                        N,
-                        R,
-                        filt=None,
-                        coeffs=None,
-                        numPts=1000 ):
-    """ simulate an arbitrary phase-locked loop using either
-    filter coefficients or component values. return 3 lists:
-    f (frequencies), g_ol (open-loop gain), phases (open-loop phases)  
-    """
-    if coeffs == None:
-        c1 = filt['c1']
-        c2 = filt['c2']
-        r2 = filt['r2']
-        if 'r3' not in filt.keys():
-            r3 = 0
-            c3 = 0
-        else:
-            c3 = filt['c3']
-            r3 = filt['r3']
-
-        if 'r4' not in filt.keys():
-            r4 = 0
-            c4 = 0
-        else:
-            c4 = filt['c4']
-            r4 = filt['r4']
-
-        coeffs = calculateCoefficients( c1=c1,
-                                        c2=c2,
-                                        c3=c3,
-                                        c4=c4,
-                                        r2=r2,
-                                        r3=r3,
-                                        r4=r4,
-                                        flt_type=filt['flt_type'])
-    a = coeffs
-    t2 = filt['r2']*filt['c2']
-    if len(a) == 2:
-        # 2nd order
-        a.append(0)    
-        a.append(0)    
-    elif len(a) == 3:
-        # 3rd order
-        a.append(0)    
-    else:
-        pass
-
-    # get smoothed curves for each phase noise component
-
-    freq, vcoPn = interp_semilogx( f, vcoPn, num_points=numPts )
-
-    # loop filter impedance
-    z = calculateZ( freq,  
-                    t2, 
-                    a[0], 
-                    a[1],
-                    a[2],
-                    a[3] )
-
-    # G(s)
-    g = calculateG( freq, z, kphi, kvco )
-
-    # # Closed-loop reference transfer gain
-    cl_r = (1.0/R)*(g/(1+g/N))
-    cl_r_db = 20*np.log10(np.absolute(cl_r))
-    refPnOut = refPn + cl_r_db
-    refPn = []
-    refPn.extend( refPnOut )
-
-    cl_ic = (g/(1+g/N))
-    cl_ic_db = 20*np.log10(np.absolute(cl_r))
-    icPnOut = pllFom + 10*np.log10(fpfd) + cl_ic_db
-    icPn = []
-    icPn.extend( icPnOut )
-
-    # # Closed-loop VCO transfer gain
-    cl_vco = 1.0/(1+g/N)
-    cl_vco_db = 20*np.log10(np.absolute(cl_vco))
-    vcoPnOut = vcoPn + cl_vco_db
-    vcoPn = []
-    vcoPn.extend( vcoPnOut )
-
-    compPn = []
-    for i in range(len(freq)):
-
-        compPn.append(power_sum([refPnOut[i],
-                                 vcoPnOut[i],
-                                 icPnOut[i] ]))
-
-    return freq, refPn, vcoPn, icPn, compPn
-
-
-def simulatePhaseNoise(f, 
-                       refPn,
-                       vcoPn,
-                       pllFom,
-                       pllFlicker,
-                       kphi,
-                       kvco,
-                       fpfd,
-                       N,
-                       R,
-                       filt=None,
-                       coeffs=None):
-    """ simulate an arbitrary phase-locked loop using either
-    filter coefficients or component values. return 3 lists:
-    f (frequencies), g_ol (open-loop gain), phases (open-loop phases)  
-    """
-    if coeffs == None:
-        c1 = filt['c1']
-        c2 = filt['c2']
-        r2 = filt['r2']
-        if 'r3' not in filt.keys():
-            r3 = 0
-            c3 = 0
-        else:
-            c3 = filt['c3']
-            r3 = filt['r3']
-
-        if 'r4' not in filt.keys():
-            r4 = 0
-            c4 = 0
-        else:
-            c4 = filt['c4']
-            r4 = filt['r4']
-
-        coeffs = calculateCoefficients( c1=c1,
-                                        c2=c2,
-                                        c3=c3,
-                                        c4=c4,
-                                        r2=r2,
-                                        r3=r3,
-                                        r4=r4,
-                                        flt_type=filt['flt_type'])
-    a = coeffs
-    t2 = filt['r2']*filt['c2']
-    if len(a) == 2:
-        # 2nd order
-        a.append(0)    
-        a.append(0)    
-    elif len(a) == 3:
-        # 3rd order
-        a.append(0)    
-    else:
-        pass
-
-    # loop filter impedance
-    z = calculateZ( f,  
-                    t2, 
-                    a[0], 
-                    a[1],
-                    a[2],
-                    a[3] )
-
-    # G(s)
-    g = calculateG( f, z, kphi, kvco )
-
-    # # Closed-loop reference transfer gain
-    cl_r = (1.0/R)*(g/(1+g/N))
-    cl_r_db = 20*np.log10(np.absolute(cl_r))
-    refPnOut = refPn + cl_r_db
-    refPn = []
-    refPn.extend( refPnOut )
-
-    cl_ic = (g/(1+g/N))
-    cl_ic_db = 20*np.log10(np.absolute(cl_r))
-    icPnOut = pllFom + 10*np.log10(fpfd) + cl_ic_db
-    icPn = []
-    icPn.extend( icPnOut )
-
-    icFlickerOut = pllFlicker + 20*np.log10(fpfd) - 10*np.log10(f) + cl_ic_db
-    icFlick = []
-    icFlick.extend( icFlickerOut )
-
-    # # Closed-loop VCO transfer gain
-    cl_vco = 1.0/(1+g/N)
-    cl_vco_db = 20*np.log10(np.absolute(cl_vco))
-    vcoPnOut = vcoPn + cl_vco_db
-    vcoPn = []
-    vcoPn.extend( vcoPnOut )
-
-    compPn = []
-    for i in range(len(f)):
-        compPn.append(power_sum( [ refPnOut[i],
-                                  vcoPnOut[i],
-                                  icPnOut[i],
-                                  icFlickerOut[i] ] ))
-
-    return f, refPn, vcoPn, icPn, icFlick, compPn
 
 def calculateCoefficients( c1=0, 
                            c2=0, 
@@ -1201,8 +1011,8 @@ def load_pn_file(fname):
             pass
         else:
             if ":" in line:
-                key = line.split()[0]
-                val = float(line.split()[1])
+                key = line.split(":")[0]
+                val = float(line.split(":")[1])
                 d[key] = val
             else:
                 try:
@@ -1214,6 +1024,81 @@ def load_pn_file(fname):
                 except Exception as e:
                     return d
     return d
+
+def write_pn_file(pn_dict, fname):
+    """
+    """
+    fo = open(fname, 'w')
+    s = "{:16s}{:16s}{:16s}{:16s}{:16s}\n".format('# offset', 'reference', 'chip', 'vco', 'phase_noise')
+    for k in range(len(pn_dict['freqs'])):
+        s += "{:<16.3E}{:<16.2f}{:<16.2f}{:<16.2f}{:<16.2f}\n".format(pn_dict['freqs'][k],
+                                                                pn_dict['reference'][k],
+                                                                pn_dict['pll_ic'][k],
+                                                                pn_dict['vco'][k],
+                                                                pn_dict['composite'][k])
+    print(s)
+    fo.write(s) 
+    fo.close()
+
+def load_pll_from_file(fname):
+    """
+    """
+    fo = open(fname, 'r')
+    s = fo.read()
+    fo.close()
+    s = s.split("\n")
+    d = {}
+    i = 0
+    for line in s:
+        if line.startswith("#"):
+            pass
+        else:
+            if ":" in line:
+                key = line.split(":")[0]
+                val = float(line.split(":")[1])
+                d[key] = val
+    order = int(d['order'])
+    active = bool(int(d['active'])) 
+    if 't43' not in d.keys():
+        d['t43'] = 0
+    if 't31' not in d.keys():
+        d['t31'] = 0
+    if 'pll_flicker' not in d.keys():
+        d['pll_flicker'] = None
+    if 'pll_fom' not in d.keys():
+        d['pll_fom'] = None
+    pll = PhaseLockedLoop(
+                          d['fc'],
+                          d['pm'],
+                          d['kphi'],
+                          d['kvco'],
+                          d['N'],
+                          ref_freq_Hz=d['ref_freq_Hz'],
+                          R=d['R'],
+                          order=order,
+                          gamma=d['gamma'],
+                          t31=d['t31'],
+                          t43=d['t43']
+                          )
+
+    return pll 
+
+def write_pll_file(pll, fname):
+    fo = open(fname, 'w')
+    fo.write("{:<16s}{:d}\n".format("order:", pll.order))
+    fo.write("{:<16s}{:d}\n".format("active:", int(pll.active)))
+    fo.write("{:<16s}{:.3E}\n".format("ref_freq_Hz:", int(pll.ref_freq_Hz)))
+    fo.write("{:<16s}{}\n".format("active:", pll.N))
+    fo.write("{:<16s}{}\n".format("active:", pll.R))
+    fo.write("{:<16s}{:.3E}\n".format("fc:", pll.fc))
+    fo.write("{:<16s}{:.2f}\n".format("pm:", pll.pm))
+    fo.write("{:<16s}{:.3E}\n".format("kphi:", pll.kphi))
+    fo.write("{:<16s}{:.3E}\n".format("kvco:", pll.kvco))
+    fo.write("{:<16s}{:.3f}\n".format("gamma:", pll.gamma))
+    fo.write("{:<16s}{:.2f}\n".format("t31:", pll.t31))
+    fo.write("{:<16s}{:.2f}\n".format("t43:", pll.t43))
+    fo.close()
+
 
 
 

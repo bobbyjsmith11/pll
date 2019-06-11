@@ -141,17 +141,17 @@ def plot_pll_phase_noise(pll,
                               coeffs=coeffs,
                               comps=comps,
                               num_pts=num_pts)
+    fout = pll.get_fpfd()*pll.N
     plt.ion()
     fig = plt.figure(figsize=(10,8))
 
     ax = fig.add_subplot(1, 1, 1)
-    ax.set_title('Phase Noise')
-    ax.set_xlabel("offset (Hz")
+    ax.set_title('Phase Noise at {:.3f} GHz'.format(fout/1e9))
+    ax.set_xlabel("offset (Hz)")
     ax.set_ylabel("dBc/Hz")
 
     ax.semilogx(pns['freqs'], pns['reference'], linestyle=':', label='reference')
     ax.semilogx(pns['freqs'], pns['pll_ic'], linestyle=':', label='pll_ic')
-    ax.semilogx(pns['freqs'], pns['flicker'], linestyle=':',label='flicker')
     ax.semilogx(pns['freqs'], pns['vco'], linestyle=':',label='vco')
     ax.semilogx(pns['freqs'], pns['composite'], label='composite')
     

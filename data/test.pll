@@ -1,0 +1,12 @@
+order:          3
+active:         0
+ref_freq_Hz:    4.000E+07
+active:         50
+active:         5
+fc:             8.500E+01
+pm:             55.00
+kphi:           7.500E-06
+kvco:           3.700E+03
+gamma:          1.136
+t31:            0.60
+t43:            0.00

@@ -1,0 +1,14 @@
+order:          3
+active:         0
+ref_freq_Hz:    100e6
+pll_fom:        -236
+pll_flicker:    -129
+N:              51.25
+R:              0.5
+fc:             300e3
+pm:             55
+kphi:           6e-3
+kvco:           94e6
+gamma:          1.136 
+t31:            0.6
+t43:            0
