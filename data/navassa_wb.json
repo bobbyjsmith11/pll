@@ -1,0 +1,6 @@
+{
+  "name": "Navassa Wide Band Requirement",
+  "frequency": 122.88e6,
+  "offset": [100, 1e3, 10e3, 100e3, 1e6, 10e6],
+  "phase_noise": [-114, -127, -138, -146, -147, -118]
+}

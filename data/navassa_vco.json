@@ -1,0 +1,7 @@
+{
+  "name": "Navassa internal VCO",
+  "frequency": 2388e6,
+  "offset": [100, 1e3, 10e3, 100e3, 1e6, 5e6, 10e6, 50e6],
+  "phase_noise": [-20, -37, -67, -97, -127, -137, -141, -154],
+  "noise_floor": -154
+}

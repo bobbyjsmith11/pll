@@ -200,7 +200,7 @@ class PllSecondOrderPassive( object ):
         """
         return c1*c2*r2
 
-class PllThirdOrderPassive( PllSecondOrderPassive ):
+class PllThirdOrderPassive(PllSecondOrderPassive):
     def __init__(self,
                  fc,
                  pm,
@@ -228,7 +228,7 @@ class PllThirdOrderPassive( PllSecondOrderPassive ):
         self.t31 = t31
 
     def calc_components(self):
-        """ return a dict with the component values """
+        """ return a dict with the component values and coefficients """
         d = {}
         omega_c = 2*np.pi*self.fc
 
@@ -481,7 +481,6 @@ class PllFourthOrderPassive( PllSecondOrderPassive ):
 
         d['c1'] = (c1_t3 + c1_t4)/2
         d['r3'] = (r3_t3 + r3_t4)/2
-
         d['c2'], d['c3'] = self.calc_c2_c3( d['a0'],
                                    d['a1'],
                                    d['a2'],
@@ -489,14 +488,9 @@ class PllFourthOrderPassive( PllSecondOrderPassive ):
                                    d['t2'],
                                    d['r3'],
                                    d['c1'] )
-      
         d['c4'] = d['a0']- d['c1']- d['c2'] - d['c3']
-
         d['r2'] = d['t2']/d['c2']
-
         d['r4'] = d['a3']/(d['t2']*d['r3']*d['c1']*d['c3']*d['c4'])
-
-
         return d
 
     def calc_c2_c3( self,
@@ -935,34 +929,34 @@ def plotSimulatePhaseNoise():
     fpfd = 10e6/R
 
     flt = {
-            'c1':368e-12,
-            'c2':6.75e-9,
-            'c3':76.6e-12,
-            'c4':44.7e-12,
-            'r2':526,
-            'r3':1.35e3,
-            'r4':3.4e3,
+            'c1': 368e-12,
+            'c2': 6.75e-9,
+            'c3': 76.6e-12,
+            'c4': 44.7e-12,
+            'r2': 526,
+            'r3': 1.35e3,
+            'r4': 3.4e3,
             'flt_type':"passive" 
            }
 
-    f =         [ 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6 ]
-    refPnIn =   [ -138, -158, -163, -165, -165, -165, -165, -165 ]
-    vcoPnIn =   [ -10, -30, -60, -90, -120, -140, -160, -162 ]
+    f =         [10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6]
+    refPnIn =   [-138, -158, -163, -165, -165, -165, -165, -165]
+    vcoPnIn =   [-10, -30, -60, -90, -120, -140, -160, -162]
 
     pllFom =        -227
     pllFlicker =    -268
 
-    f, refPn, vcoPn, icPn, icFlick, comp = simulatePhaseNoise( f,
-                                                               refPnIn,
-                                                               vcoPnIn,
-                                                               pllFom,
-                                                               pllFlicker,
-                                                               kphi,
-                                                               kvco,
-                                                               fpfd,
-                                                               N,
-                                                               R,
-                                                               filt=flt )
+    f, refPn, vcoPn, icPn, icFlick, comp = simulatePhaseNoise(f,
+                                                              refPnIn,
+                                                              vcoPnIn,
+                                                              pllFom,
+                                                              pllFlicker,
+                                                              kphi,
+                                                              kvco,
+                                                              fpfd,
+                                                              N,
+                                                              R,
+                                                              filt=flt)
 
     # print(type(f))
     # print(type(refPn))
@@ -982,44 +976,44 @@ def plotSimulatePhaseNoise():
     plt.show()
     return f, refPn, vcoPn, icPn, icFlick, comp
 
-def interp_semilogx(x, y, num_points):
+def interp_semilogx(x, y, num_points, x_range=None):
     """ return a paired list of values each with length num_points where
     the values are linearly interpolated with the x axis in the log scale.
     Essentially, given arrays x and y, increase the resolution of to num_points
-    Parameters:
-        x (list) - x values (frequencies)
-        y (list) - y values (phase noise or gain in dB)
-    Note: x and y have a semilog X relationship.
-    Returns:
-        tuple of lists (freqs, values)
+    :param x: array of x values
+    :param y: array of y values (x and y need to be of equal length)
+    :param num_points: int number of points for the entire range
+    :param x_range: array of 2 elements: [x_lo, x_hi]
+                    this is the range of x values which will be returned
+    :return:
+        tuple (xx, yy)
     """
     # first, log-ify the x axis
     log_x = []
     for item in x:
-        log_x.append(math.log10(item))    # x_new, y_new = interp_linear(log_x, y, x_interp) 
-    xmin = min(log_x)
-    xmax = max(log_x)
-    f_log = linspace(xmin, xmax, num_points)
+        log_x.append(math.log10(item))  # x_new, y_new = interp_linear(log_x, y, x_interp)
+    if x_range == None:
+        xmin = min(log_x)
+    else:
+        xmin = math.log10(min(x_range))
+    if x_range == None:
+        xmax = max(log_x)
+    else:
+        xmax = math.log10(max(x_range))
+    f_log = np.linspace(xmin, xmax, num_points)
     y_interp = []
 
     x_log = []
     for x_val in x:
         x_log.append(math.log10(x_val))
-    
+
     f = []
     for xx in f_log:
-        f.append(10**(xx))
+        f.append(10 ** (xx))
         y_temp = interp_linear(x_log, y, xx)
         y_interp.append(y_temp[1])
 
-    # f = [xx**(f_log) for xx in f_log]
     return f, y_interp
-    # # return x_new, y_new
-    # return log_x, y
-    # # x_new, y_new = interp_linear(log_x, y, x_interp) 
-    # # return x_new, y_new
-    # x_new, y_new = interp_linear(x, y, x_interp) 
-    # return x_new, y_new
 
 def plot_interp_semilogx(x, y, num_points=10):
     """
@@ -1107,7 +1101,7 @@ def get_freq_points_per_decade(fstart, fstop, ptsPerDec):
             ar.append(float(val))
     return ar    
 
-def simulatePhaseNoise2( f, 
+def simulatePhaseNoise2(f,
                         refPn,
                         vcoPn,
                         pllFom,
@@ -1163,7 +1157,7 @@ def simulatePhaseNoise2( f,
 
     # get smoothed curves for each phase noise component
 
-    freq, vcoPn = interp_semilogx( f, vcoPn, num_points=numPts )
+    freq, vcoPn = interp_semilogx(f, vcoPn, num_points=numPts)
 
     # loop filter impedance
     z = calculateZ( freq,  
@@ -1181,7 +1175,7 @@ def simulatePhaseNoise2( f,
     cl_r_db = 20*np.log10(np.absolute(cl_r))
     refPnOut = refPn + cl_r_db
     refPn = []
-    refPn.extend( refPnOut )
+    refPn.extend(refPnOut)
 
     cl_ic = (g/(1+g/N))
     cl_ic_db = 20*np.log10(np.absolute(cl_r))
@@ -1372,5 +1366,29 @@ def callGetInterpolatedPhaseNoise(d):
         }
 
     return d
+
+
+def calc_pll_fom(pn_plateau, f_pfd_Hz, f_carrier_Hz):
+    """
+    return the PLL figure-of-merit
+    :param pn_plateau: phase noise seen at the PLL plateau (before the loop bw roll-off)
+    :param f_pfd: phase comparison frequency
+    :param f_carrier: carrier frequency
+    """
+    return pn_plateau - 10*np.log10(f_pfd_Hz) - 20*np.log10(f_carrier_Hz/f_pfd_Hz)
+
+
+def calc_pn_plateau(pll_fom, f_pfd_Hz, f_carrier_Hz, reference_noise_floor=-500):
+    """
+    return the estimate of phase noise plateau
+    :param pll_fom: PLL figure-of-merit
+    :param f_pfd: phase comparison frequency
+    :param f_carrier: carrier frequency
+    """
+    noiseless_ref = pll_fom + 10 * np.log10(f_pfd_Hz) + 20 * np.log10(f_carrier_Hz / f_pfd_Hz)
+    ref_noise = reference_noise_floor + 20 * np.log10(f_carrier_Hz / f_pfd_Hz)
+    return power_sum([noiseless_ref, ref_noise])
+
+
 
 

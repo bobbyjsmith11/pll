@@ -127,18 +127,18 @@ class Test3rdOrderPassive(TestCase):
         ptsPerDec = 100
         R = 1
 
-        pll = PllThirdOrderPassive( fc,
-                                     pm,
-                                     kphi,
-                                     kvco,
-                                     N,
-                                     gamma=1.024,
-                                     t31=0.6)
+        pll = PllThirdOrderPassive(fc,
+                                   pm,
+                                   kphi,
+                                   kvco,
+                                   N,
+                                   gamma=1.024,
+                                   t31=0.6)
 
         d_test = pll.calc_components()
         pm_test, fc_test = get_pm_fc_from_actual_filter_components(d_test, fstart, fstop, ptsPerDec, kphi, kvco, N, R)
 
-        self.assertAlmostEqual(pm,pm_test)
+        self.assertAlmostEqual(pm, pm_test)
 
     def test_3rd_order_passive_loop_bandwidth(self):
         """ Tests full operation of PllThirdOrderPassive. 

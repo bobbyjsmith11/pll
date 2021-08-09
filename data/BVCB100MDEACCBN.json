@@ -1,0 +1,8 @@
+{
+  "name": "BVCB100MDEACCBN",
+  "frequency": 100000000,
+  "offset": [10, 100, 1e3, 10e3, 100e3, 1e6],
+  "phase_noise": [-75, -100, -130, -145, -155, -160],
+  "noise_floor": -160,
+  "tune_ppm_per_volt": 37
+}

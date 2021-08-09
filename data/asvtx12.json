@@ -1,7 +1,8 @@
 {
-  'frequency': 19.2e6,
-  'phase_noise': [(100, -100), (1e3, -125), (10e3, -140)],
-  'noise_floor': -150,
-  'tune_ppm_per_volt': 7.25,
-
+  "name": "ASVTX-12-40M",
+  "frequency": 40000000,
+  "offset": [10, 100, 1e3, 10e3, 100e3, 1e6],
+  "phase_noise": [-80, -107, -130, -146, -150, -150],
+  "noise_floor": -150,
+  "tune_ppm_per_volt": 7.25
 }
