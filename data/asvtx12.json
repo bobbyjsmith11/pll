@@ -1,0 +1,7 @@
+{
+  'frequency': 19.2e6,
+  'phase_noise': [(100, -100), (1e3, -125), (10e3, -140)],
+  'noise_floor': -150,
+  'tune_ppm_per_volt': 7.25,
+
+}
