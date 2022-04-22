@@ -13,7 +13,8 @@ def quick_comparison(fcomp=100e6):
     plot_phase_noise([pn_nv, pn_abc, pn_b], title=mytitle, freq_comp=fcomp)
 
 def simulate_pll_phase_noise(ref_json, vco_json, pll_fom, fpfd, fcarrier,
-                             fmin=1e3, fmax=10e6, loop_bw=100e3, pm=55,  num_points=100, flicker=-500):
+                             fmin=1e3, fmax=10e6, loop_bw=100e3, pm=55,  
+                             num_points=100, flicker=-500):
     """
     :param ref_json: json file for reference
     :param ref_vco: json file for vco
@@ -45,16 +46,16 @@ def simulate_pll_phase_noise(ref_json, vco_json, pll_fom, fpfd, fcarrier,
     c = pll3.calc_components()
     c['flt_type'] = 'passive'
     R = 1
-    f, ref_pn, vco_pn, ic_pn, ic_flick, total_pn = simulatePhaseNoise(freq,
-                                                                      pn_r,
-                                                                      pn_vco,
-                                                                      pll_fom,
-                                                                      flicker,
-                                                                      KPHI,
-                                                                      KVCO,
-                                                                      fpfd,
-                                                                      N,
-                                                                      R, filt=c)
+    f, ref_pn, vco_pn, ic_pn, ic_flick, total_pn = simulate_phase_noise(freq,
+                                                                        pn_r,
+                                                                        pn_vco,
+                                                                        pll_fom,
+                                                                        flicker,
+                                                                        KPHI,
+                                                                        KVCO,
+                                                                        fpfd,
+                                                                        N,
+                                                                        R, filt=c)
     ret_lst = []
     ret_lst.append({'name': 'reference', 'offset': f, 'phase_noise': ref_pn})
     ret_lst.append({'name': 'vco', 'offset': f, 'phase_noise': vco_pn})

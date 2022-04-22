@@ -946,17 +946,17 @@ def plotSimulatePhaseNoise():
     pllFom =        -227
     pllFlicker =    -268
 
-    f, refPn, vcoPn, icPn, icFlick, comp = simulatePhaseNoise(f,
-                                                              refPnIn,
-                                                              vcoPnIn,
-                                                              pllFom,
-                                                              pllFlicker,
-                                                              kphi,
-                                                              kvco,
-                                                              fpfd,
-                                                              N,
-                                                              R,
-                                                              filt=flt)
+    f, refPn, vcoPn, icPn, icFlick, comp = simulate_phase_noise(f,
+                                                                refPnIn,
+                                                                vcoPnIn,
+                                                                pllFom,
+                                                                pllFlicker,
+                                                                kphi,
+                                                                kvco,
+                                                                fpfd,
+                                                                N,
+                                                                R,
+                                                                filt=flt)
 
     # print(type(f))
     # print(type(refPn))
@@ -1199,19 +1199,76 @@ def simulatePhaseNoise2(f,
 
     return freq, refPn, vcoPn, icPn, compPn
 
+def get_closed_loop_gain(f, kphi, kvco, R, N, filt=None, coeffs=None):
+    """
+    return the closed loop gain in dB
+    """
+    if coeffs == None:
+        c1 = filt['c1']
+        c2 = filt['c2']
+        r2 = filt['r2']
+        if 'r3' not in filt.keys():
+            r3 = 0
+            c3 = 0
+        else:
+            c3 = filt['c3']
+            r3 = filt['r3']
 
-def simulatePhaseNoise( f, 
-                        refPn,
-                        vcoPn,
-                        pllFom,
-                        pllFlicker,
-                        kphi,
-                        kvco,
-                        fpfd,
-                        N,
-                        R,
-                        filt=None,
-                        coeffs=None ):
+        if 'r4' not in filt.keys():
+            r4 = 0
+            c4 = 0
+        else:
+            c4 = filt['c4']
+            r4 = filt['r4']
+
+        coeffs = calculateCoefficients(c1=c1,
+                                       c2=c2,
+                                       c3=c3,
+                                       c4=c4,
+                                       r2=r2,
+                                       r3=r3,
+                                       r4=r4,
+                                       flt_type=filt['flt_type'])
+    a = coeffs
+    t2 = filt['r2']*filt['c2']
+    if len(a) == 2:
+        # 2nd order
+        a.append(0)    
+        a.append(0)    
+    elif len(a) == 3:
+        # 3rd order
+        a.append(0)    
+    else:
+        pass
+
+    # loop filter impedance
+    z = calculateZ( f,  
+                    t2, 
+                    a[0], 
+                    a[1],
+                    a[2],
+                    a[3] )
+
+    # G(s)
+    g = calculateG(f, z, kphi, kvco)
+
+    # # Closed-loop reference transfer gain
+    cl_r = (1.0/R)*(g/(1+g/N))
+    cl_r_db = 20*np.log10(np.absolute(cl_r))
+    return cl_r_db
+
+def simulate_phase_noise(f, 
+                         refPn,
+                         vcoPn,
+                         pllFom,
+                         pllFlicker,
+                         kphi,
+                         kvco,
+                         fpfd,
+                         N,
+                         R,
+                         filt=None,
+                         coeffs=None ):
     """ simulate an arbitrary phase-locked loop using either
     filter coefficients or component values. return 3 lists:
     f (frequencies), g_ol (open-loop gain), phases (open-loop phases)  
@@ -1263,14 +1320,14 @@ def simulatePhaseNoise( f,
                     a[3] )
 
     # G(s)
-    g = calculateG( f, z, kphi, kvco )
+    g = calculateG(f, z, kphi, kvco)
 
     # # Closed-loop reference transfer gain
     cl_r = (1.0/R)*(g/(1+g/N))
     cl_r_db = 20*np.log10(np.absolute(cl_r))
     refPnOut = refPn + cl_r_db
     refPn = []
-    refPn.extend( refPnOut )
+    refPn.extend(refPnOut)
 
     cl_ic = (g/(1+g/N))
     cl_ic_db = 20*np.log10(np.absolute(cl_r))
